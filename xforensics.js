@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         X Profile Forensics (v2.1 Context Aware)
+// @name         X Profile Forensics (v3.4 Text/Font Fix)
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
-// @description  Advanced forensics. Now understands that VPN usage for Iranian users is "Normal" behavior, not "High Risk".
+// @version      3.4.0
+// @description  Advanced forensics (Location, Device, Shield). Updated Fonts & Anomaly Texts.
 // @author       A Pleasant Experience
 // @match        https://x.com/*
 // @match        https://twitter.com/*
@@ -13,351 +13,324 @@
 (function () {
     'use strict';
 
-    // --- 1. CSS STYLES ---
+    // --- 1. LOCALIZATION ---
+    // Save/Load Language Preference
+    const PREF_LANG = localStorage.getItem("xf_lang_pref") || "auto";
+    const DETECTED_LANG = (navigator.language || 'en').split('-')[0];
+    const ACTIVE_LANG = PREF_LANG === "auto" ? DETECTED_LANG : PREF_LANG;
+    const IS_RTL = (ACTIVE_LANG === 'fa' || ACTIVE_LANG === 'ar');
+
+    const TRANSLATIONS = {
+        en: {
+            title: "Forensics v3.4",
+            labels: { location: "Location", device: "Device", id: "Perm ID", created: "Created", renamed: "Renamed", identity: "Identity", type: "Type" },
+            risk: { safe: "SAFE", detected: "DETECTED", anomaly: "ANOMALY", caution: "CAUTION", normal: "NORMAL", verified: "VERIFIED ID" },
+            status: {
+                high_conf: "High Confidence",
+                high_desc: "Connection matches organic traffic patterns.",
+                shield: "Shield Active",
+                shield_desc: "Traffic obfuscated via Proxy/VPN or flagged for relocation.",
+                shield_norm: "Shield Active (Normal)",
+                shield_norm_desc: "User identified as Iranian using VPN. Standard behavior.",
+                anomaly: "Anomaly Detected",
+                // UPDATED TEXT
+                anomaly_desc: "Direct access blocked in Iran. Likely causes: White SIM, Serverless config, or +98 Phone Registration.",
+                renamed_msg: "Renamed {n}x"
+            },
+            btn: { view_avatar: "View Avatar", close: "Close" },
+            values: { gov: "Government", unknown: "Unknown" },
+            lang_sel: "Lang:"
+        },
+        fa: {
+            title: "جرم‌شناسی ۳.۴",
+            labels: { location: "موقعیت", device: "دستگاه", id: "شناسه", created: "ساخت", renamed: "تغییر نام", identity: "هویت", type: "نوع" },
+            risk: { safe: "امن", detected: "هشدار", anomaly: "ناهنجاری", caution: "احتیاط", normal: "طبیعی", verified: "تایید شده" },
+            status: {
+                high_conf: "اطمینان بالا",
+                high_desc: "اتصال طبیعی است.",
+                shield: "سپر فعال",
+                shield_desc: "استفاده از VPN/پروکسی تشخیص داده شد.",
+                shield_norm: "سپر فعال (طبیعی)",
+                shield_norm_desc: "کاربر ایرانی با VPN. رفتار طبیعی.",
+                anomaly: "ناهنجاری",
+                // UPDATED TEXT
+                anomaly_desc: "دسترسی مستقیم در ایران مسدود است. دلایل احتمالی: سیم‌کارت سفید، تانلینگ یا ثبت‌نام با شماره ۹۸+.",
+                renamed_msg: "{n} بار تغییر نام"
+            },
+            btn: { view_avatar: "آواتار اصلی", close: "بستن" },
+            values: { gov: "دولتی", unknown: "نامشخص" },
+            lang_sel: "زبان:"
+        }
+    };
+
+    const TEXT = TRANSLATIONS[ACTIVE_LANG] || TRANSLATIONS['en'];
+
+    // --- 2. CONFIG & STYLES ---
+    const CONFIG = {
+        bearerToken: "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs=1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+        queryId: "XRqGa7EeokUU5kppkh13EA",
+        features: { hidden_profile_subscriptions_enabled: true, subscriptions_verification_info_is_identity_verified_enabled: true, subscriptions_verification_info_verified_since_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_timeline_navigation_enabled_elsewhere: true, responsive_web_enhance_cards_enabled: true, verified_phone_label_enabled: true, creator_subscriptions_tweet_preview_api_enabled: true, highlights_tweets_tab_ui_enabled: true, longform_notetweets_consumption_enabled: true, tweetypie_unmention_optimization_enabled: true, vibe_api_enabled: true }
+    };
+
+    // UPDATED FONT STACK
+    const FONT_STACK = 'TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+
     const STYLES = `
-        :root {
-            --xf-bg: rgba(0, 0, 0, 0.85);
-            --xf-border: rgba(255, 255, 255, 0.12);
-            --xf-glass: blur(16px);
-            --xf-blue: #1d9bf0;
-            --xf-green: #00ba7c;
-            --xf-red: #f91880;
-            --xf-orange: #ffd400;
-            --xf-text: #e7e9ea;
-            --xf-text-dim: #71767b;
-        }
-        #xf-pill {
-            display: inline-flex; align-items: center; background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--xf-border); border-radius: 999px; padding: 4px 12px;
-            margin-right: 12px; margin-bottom: 4px; cursor: pointer; transition: all 0.2s ease;
-            font-family: TwitterChirp, -apple-system, sans-serif; font-size: 13px; user-select: none;
-        }
-        #xf-pill:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.3); }
-        .xf-dot {
-            width: 8px; height: 8px; border-radius: 50%; margin-right: 8px;
-            box-shadow: 0 0 8px currentColor; animation: xf-pulse 2s infinite;
-        }
-        @keyframes xf-pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-        #xf-card {
-            position: fixed; z-index: 10000; width: 340px;
-            background: var(--xf-bg); backdrop-filter: var(--xf-glass); -webkit-backdrop-filter: var(--xf-glass);
-            border: 1px solid var(--xf-border); border-radius: 16px; padding: 16px;
-            color: var(--xf-text); font-family: TwitterChirp, -apple-system, sans-serif;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.6); opacity: 0; transform: translateY(10px) scale(0.98);
-            transition: opacity 0.2s, transform 0.2s; pointer-events: none;
-        }
-        #xf-card.visible { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-        .xf-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--xf-border); padding-bottom: 12px; margin-bottom: 12px; }
-        .xf-title { font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: var(--xf-text-dim); }
-        .xf-risk-badge { font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 6px; text-transform: uppercase; }
-        .xf-risk-bar-bg { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-bottom: 16px; overflow: hidden; }
-        .xf-risk-bar-fill { height: 100%; width: 0%; transition: width 0.5s ease; }
-        .xf-status-box { padding: 10px; border-radius: 8px; font-size: 13px; line-height: 1.4; margin-bottom: 16px; border-left: 3px solid transparent; background: rgba(255,255,255,0.03); }
-        .xf-grid { display: grid; grid-template-columns: 1fr; gap: 8px; font-size: 13px; }
+        :root { --xf-bg: rgba(0,0,0,0.9); --xf-border: rgba(255,255,255,0.15); --xf-blue: #1d9bf0; --xf-green: #00ba7c; --xf-red: #f91880; --xf-orange: #ffd400; --xf-text: #e7e9ea; --xf-dim: #71767b; }
+
+        #xf-pill { display: inline-flex; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid var(--xf-border); border-radius: 99px; padding: 4px 12px; margin-right: 12px; margin-bottom: 4px; cursor: pointer; font-family: ${FONT_STACK}; font-size: 13px; user-select: none; direction: ltr; }
+        #xf-pill:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); }
+        .xf-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; box-shadow: 0 0 6px currentColor; animation: xf-pulse 2s infinite; }
+        @keyframes xf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* Card */
+        #xf-card { position: fixed; z-index: 10000; width: 320px; background: var(--xf-bg); backdrop-filter: blur(12px); border: 1px solid var(--xf-border); border-radius: 16px; padding: 16px; color: var(--xf-text); font-family: ${FONT_STACK}; box-shadow: 0 15px 40px rgba(0,0,0,0.7); opacity: 0; transform: translateY(10px); transition: 0.2s; pointer-events: none; direction: ${IS_RTL?'rtl':'ltr'}; text-align: ${IS_RTL?'right':'left'}; }
+        #xf-card.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+        .xf-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--xf-border); padding-bottom: 10px; margin-bottom: 10px; }
+        .xf-title { font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--xf-dim); }
+        .xf-badge { font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 4px; background: var(--xf-border); color: #fff; }
+
+        .xf-bar-bg { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-bottom: 12px; overflow: hidden; }
+        .xf-bar-fill { height: 100%; transition: width 0.5s; }
+        .xf-status { padding: 10px; border-radius: 8px; font-size: 12px; line-height: 1.4; margin-bottom: 12px; background: rgba(255,255,255,0.03); border-${IS_RTL?'right':'left'}: 3px solid transparent; }
+
+        .xf-grid { display: grid; gap: 6px; font-size: 13px; }
         .xf-row { display: flex; justify-content: space-between; }
-        .xf-label { color: var(--xf-text-dim); }
-        .xf-value { font-weight: 600; text-align: right; }
+        .xf-lbl { color: var(--xf-dim); }
+        .xf-val { font-weight: 600; direction: ltr; }
         .xf-mono { font-family: monospace; background: rgba(255,255,255,0.1); padding: 1px 4px; border-radius: 4px; }
-        .xf-footer { margin-top: 16px; text-align: center; }
-        .xf-btn { display: inline-block; width: 100%; padding: 8px 0; background: rgba(29, 155, 240, 0.15); color: var(--xf-blue); border-radius: 8px; font-weight: bold; font-size: 13px; text-decoration: none; transition: background 0.2s; }
-        .xf-btn:hover { background: rgba(29, 155, 240, 0.25); }
+
+        .xf-ftr { margin-top: 15px; text-align: center; }
+        .xf-btn { display: block; padding: 8px; background: rgba(29,155,240,0.15); color: var(--xf-blue); border-radius: 8px; font-weight: bold; font-size: 12px; text-decoration: none; font-family: ${FONT_STACK}; }
+
+        /* Lang Switcher */
+        .xf-lang-row { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--xf-border); display: flex; justify-content: center; gap: 8px; font-size: 11px; color: var(--xf-dim); }
+        .xf-lang-opt { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: 0.2s; }
+        .xf-lang-opt:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .xf-lang-active { background: rgba(29,155,240,0.2); color: var(--xf-blue); font-weight: bold; }
+
         /* Mobile */
-        #xf-mobile-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 99999; display: none; align-items: flex-end; justify-content: center; backdrop-filter: blur(4px); }
-        #xf-mobile-sheet { width: 100%; max-width: 500px; background: #000; border-top: 1px solid var(--xf-border); border-radius: 20px 20px 0 0; padding: 24px; box-shadow: 0 -10px 40px rgba(0,0,0,0.5); animation: xf-slide-up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
-        @keyframes xf-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        .xf-mobile-close { margin-top: 20px; padding: 12px; background: #eff3f4; color: #000; text-align: center; border-radius: 999px; font-weight: 700; font-size: 15px; }
+        #xf-mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 99999; display: none; align-items: flex-end; justify-content: center; backdrop-filter: blur(5px); direction: ${IS_RTL?'rtl':'ltr'}; }
+        #xf-mob-sheet { width: 100%; max-width: 450px; background: #000; border-top: 1px solid var(--xf-border); border-radius: 20px 20px 0 0; padding: 20px; animation: xf-up 0.3s; font-family: ${FONT_STACK}; }
+        @keyframes xf-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .xf-close { margin-top: 15px; padding: 12px; background: #eff3f4; color: #000; text-align: center; border-radius: 99px; font-weight: 700; font-size: 14px; cursor: pointer; user-select: none; }
     `;
 
     const styleEl = document.createElement("style");
     styleEl.innerHTML = STYLES;
     document.head.appendChild(styleEl);
 
-    // --- CONFIG & STATE ---
-    const CONFIG = {
-        bearerToken: "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs=1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
-        queryId: "XRqGa7EeokUU5kppkh13EA",
-        features: {
-            hidden_profile_subscriptions_enabled: true,
-            subscriptions_verification_info_is_identity_verified_enabled: true,
-            subscriptions_verification_info_verified_since_enabled: true,
-            responsive_web_graphql_skip_user_profile_image_extensions_enabled: true,
-            responsive_web_graphql_timeline_navigation_enabled: true,
-            responsive_web_graphql_timeline_navigation_enabled_elsewhere: true,
-            responsive_web_enhance_cards_enabled: true,
-            verified_phone_label_enabled: true,
-            creator_subscriptions_tweet_preview_api_enabled: true,
-            highlights_tweets_tab_ui_enabled: true,
-            longform_notetweets_consumption_enabled: true,
-            tweetypie_unmention_optimization_enabled: true,
-            vibe_api_enabled: true,
-        }
-    };
-
-    const cache = {};
-    let lastUrl = location.href;
-    let tooltipEl = null; 
-    let hideTimeout = null;
-    let isInjecting = false;
-
+    // --- 3. STATE ---
     const IS_MOBILE = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
     const SOURCE_REGEX = /^(.*?)\s+(App\s?Store|Google\s?Play|Play\s?Store|Android\s?App|iOS\s?App)$/i;
 
-    const COUNTRY_MAP = {
-        AF: "Afghanistan", AL: "Albania", DZ: "Algeria", AD: "Andorra", AO: "Angola", AR: "Argentina", AM: "Armenia", AU: "Australia", AT: "Austria", AZ: "Azerbaijan",
-        BS: "Bahamas", BH: "Bahrain", BD: "Bangladesh", BB: "Barbados", BY: "Belarus", BE: "Belgium", BZ: "Belize", BJ: "Benin", BT: "Bhutan", BO: "Bolivia", BA: "Bosnia",
-        BW: "Botswana", BR: "Brazil", BG: "Bulgaria", BF: "Burkina Faso", BI: "Burundi", KH: "Cambodia", CM: "Cameroon", CA: "Canada", CL: "Chile", CN: "China", CO: "Colombia",
-        CR: "Costa Rica", HR: "Croatia", CU: "Cuba", CY: "Cyprus", CZ: "Czechia", DK: "Denmark", DO: "Dominican Republic", EC: "Ecuador", EG: "Egypt", SV: "El Salvador",
-        EE: "Estonia", ET: "Ethiopia", FI: "Finland", FR: "France", GE: "Georgia", DE: "Germany", GH: "Ghana", GR: "Greece", GT: "Guatemala", HN: "Honduras", HU: "Hungary",
-        IS: "Iceland", IN: "India", ID: "Indonesia", IR: "Iran", IQ: "Iraq", IE: "Ireland", IL: "Israel", IT: "Italy", JM: "Jamaica", JP: "Japan", JO: "Jordan", KZ: "Kazakhstan",
-        KE: "Kenya", KW: "Kuwait", LV: "Latvia", LB: "Lebanon", LY: "Libya", LT: "Lithuania", LU: "Luxembourg", MG: "Madagascar", MY: "Malaysia", MV: "Maldives", MX: "Mexico",
-        MC: "Monaco", MA: "Morocco", NP: "Nepal", NL: "Netherlands", NZ: "New Zealand", NG: "Nigeria", NO: "Norway", OM: "Oman", PK: "Pakistan", PA: "Panama", PY: "Paraguay",
-        PE: "Peru", PH: "Philippines", PL: "Poland", PT: "Portugal", QA: "Qatar", RO: "Romania", RU: "Russia", SA: "Saudi Arabia", SN: "Senegal", RS: "Serbia", SG: "Singapore",
-        SK: "Slovakia", SI: "Slovenia", ZA: "South Africa", KR: "South Korea", ES: "Spain", LK: "Sri Lanka", SE: "Sweden", CH: "Switzerland", TW: "Taiwan", TH: "Thailand",
-        TN: "Tunisia", TR: "Turkey", UA: "Ukraine", AE: "United Arab Emirates", GB: "United Kingdom", US: "United States", UY: "Uruguay", VE: "Venezuela", VN: "Vietnam",
-        YE: "Yemen", ZW: "Zimbabwe"
-    };
+    const COUNTRY_MAP={AF:"Afghanistan",AL:"Albania",DZ:"Algeria",AD:"Andorra",AO:"Angola",AR:"Argentina",AM:"Armenia",AU:"Australia",AT:"Austria",AZ:"Azerbaijan",BS:"Bahamas",BH:"Bahrain",BD:"Bangladesh",BB:"Barbados",BY:"Belarus",BE:"Belgium",BZ:"Belize",BJ:"Benin",BT:"Bhutan",BO:"Bolivia",BA:"Bosnia",BW:"Botswana",BR:"Brazil",BG:"Bulgaria",BF:"Burkina Faso",BI:"Burundi",KH:"Cambodia",CM:"Cameroon",CA:"Canada",CL:"Chile",CN:"China",CO:"Colombia",CR:"Costa Rica",HR:"Croatia",CU:"Cuba",CY:"Cyprus",CZ:"Czechia",DK:"Denmark",DO:"Dominican Republic",EC:"Ecuador",EG:"Egypt",SV:"El Salvador",EE:"Estonia",ET:"Ethiopia",FI:"Finland",FR:"France",GE:"Georgia",DE:"Germany",GH:"Ghana",GR:"Greece",GT:"Guatemala",HN:"Honduras",HU:"Hungary",IS:"Iceland",IN:"India",ID:"Indonesia",IR:"Iran",IQ:"Iraq",IE:"Ireland",IL:"Israel",IT:"Italy",JM:"Jamaica",JP:"Japan",JO:"Jordan",KZ:"Kazakhstan",KE:"Kenya",KW:"Kuwait",LV:"Latvia",LB:"Lebanon",LY:"Libya",LT:"Lithuania",LU:"Luxembourg",MG:"Madagascar",MY:"Malaysia",MV:"Maldives",MX:"Mexico",MC:"Monaco",MA:"Morocco",NP:"Nepal",NL:"Netherlands",NZ:"New Zealand",NG:"Nigeria",NO:"Norway",OM:"Oman",PK:"Pakistan",PA:"Panama",PY:"Paraguay",PE:"Peru",PH:"Philippines",PL:"Poland",PT:"Portugal",QA:"Qatar",RO:"Romania",RU:"Russia",SA:"Saudi Arabia",SN:"Senegal",RS:"Serbia",SG:"Singapore",SK:"Slovakia",SI:"Slovenia",ZA:"South Africa",KR:"South Korea",ES:"Spain",LK:"Sri Lanka",SE:"Sweden",CH:"Switzerland",TW:"Taiwan",TH:"Thailand",TN:"Tunisia",TR:"Turkey",UA:"Ukraine",AE:"United Arab Emirates",GB:"United Kingdom",US:"United States",UY:"Uruguay",VE:"Venezuela",VN:"Vietnam",YE:"Yemen",ZW:"Zimbabwe"};
 
-    // --- UTILS ---
-    function getCsrfToken() { return document.cookie.match(/(?:^|; )ct0=([^;]+)/)?.[1] || ""; }
-    function getUsername() { return window.location.pathname.split('/')[1]; }
-    function resolveCountry(val) { return (val && val.length === 2 && COUNTRY_MAP[val]) ? COUNTRY_MAP[val] : (val || "Unknown"); }
-    function formatTime(ts) { 
-        if (!ts) return "N/A";
-        return new Date(isNaN(ts) ? ts : parseInt(ts)).toLocaleString(undefined, {
-            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-        });
+    const cache = {};
+    let lastUrl = location.href;
+    let tooltipEl = null, hideTimeout = null, isInjecting = false;
+
+    // --- 4. LOGIC ---
+    function getCsrf() { return document.cookie.match(/(?:^|; )ct0=([^;]+)/)?.[1] || ""; }
+    function getUser() { return window.location.pathname.split('/')[1]; }
+    function getCountryName(code) { return COUNTRY_MAP[code] || code || TEXT.values.unknown; }
+    function fmtDate(ts) { return ts ? new Date(ts).toLocaleDateString() + ' ' + new Date(ts).toLocaleTimeString() : "N/A"; }
+
+    function setLang(lang) {
+        localStorage.setItem("xf_lang_pref", lang);
+        location.reload();
     }
 
-    // --- UI: RENDER CARD ---
-    function generateCardHTML(data) {
-        // Defaults
-        let riskColor = "var(--xf-green)";
-        let riskLabel = "SAFE";
-        let riskPercent = "5%";
-        let statusTitle = "High Confidence";
-        let statusDesc = "Connection matches organic traffic patterns.";
-        let statusBorder = "var(--xf-green)";
-        let statusBg = "rgba(0, 186, 124, 0.1)";
+    function renderCard(data) {
+        let color = "var(--xf-green)", label = TEXT.risk.safe, pct = "5%",
+            title = TEXT.status.high_conf, desc = TEXT.status.high_desc,
+            bg = "rgba(0, 186, 124, 0.1)";
 
-        // Logic Variables
-        const isDeviceIran = (data.device || "").includes("Iran");
-        const isShieldActive = (data.isAccurate === false);
-        const isIranAnomaly = (data.country === "Iran" && data.isAccurate === true);
+        const isIranDev = (data.deviceFull || "").includes("Iran");
+        const isIranLoc = data.country === "Iran";
 
-        if (isShieldActive) {
-            if (isDeviceIran) {
-                // CONTEXT AWARE: Iranian user + VPN = NORMAL (Low Risk)
-                riskColor = "var(--xf-green)";
-                riskLabel = "NORMAL";
-                riskPercent = "10%";
-                statusTitle = "Shield Active (Normal)";
-                statusDesc = "User identified as Iranian using VPN/Proxy. This is standard behavior for this region.";
-                statusBorder = "var(--xf-green)";
-                statusBg = "rgba(0, 186, 124, 0.1)";
+        if (!data.isAccurate) {
+            if (isIranDev) {
+                label = TEXT.risk.normal; pct = "15%";
+                title = TEXT.status.shield_norm; desc = TEXT.status.shield_norm_desc;
             } else {
-                // Standard: VPN Detected = High Risk
-                riskColor = "var(--xf-red)";
-                riskLabel = "DETECTED";
-                riskPercent = "90%";
-                statusTitle = "Shield Active";
-                statusDesc = "Traffic obfuscated via Proxy/VPN or flagged for relocation.";
-                statusBorder = "var(--xf-red)";
-                statusBg = "rgba(249, 24, 128, 0.1)";
+                color = "var(--xf-red)"; label = TEXT.risk.detected; pct = "90%";
+                title = TEXT.status.shield; desc = TEXT.status.shield_desc;
+                bg = "rgba(249, 24, 128, 0.1)";
             }
-        } else if (isIranAnomaly) {
-            // Iran + Direct = ANOMALY
-            riskColor = "var(--xf-orange)";
-            riskLabel = "ANOMALY";
-            riskPercent = "65%";
-            statusTitle = "Anomaly Detected";
-            statusDesc = "Direct access blocked in Iran. Likely White SIM, Serverless, or Phone Override.";
-            statusBorder = "var(--xf-orange)";
-            statusBg = "rgba(255, 212, 0, 0.1)";
+        } else if (isIranLoc && data.isAccurate) {
+            color = "var(--xf-orange)"; label = TEXT.risk.anomaly; pct = "70%";
+            title = TEXT.status.anomaly; desc = TEXT.status.anomaly_desc;
+            bg = "rgba(255, 212, 0, 0.1)";
         }
 
-        if (data.renamed > 0) {
-            // Downgrade trust slightly if renamed
-            if (riskLabel === "SAFE") {
-                riskColor = "var(--xf-orange)";
-                riskLabel = "CAUTION";
-                riskPercent = "40%";
-            }
-            statusDesc += ` (User renamed ${data.renamed} times)`;
+        if (data.renamed > 0 && label === TEXT.risk.safe) {
+            color = "var(--xf-orange)"; label = TEXT.risk.caution; pct = "40%";
         }
+        if (data.isIdVerified) { pct = "0%"; label = TEXT.risk.verified; color = "var(--xf-blue)"; }
 
-        if (data.isIdVerified) {
-            riskPercent = "0%";
-            riskLabel = "VERIFIED ID";
-            riskColor = "var(--xf-blue)";
-        }
+        const langHtml = `
+            <div class="xf-lang-row">
+                <span>${TEXT.lang_sel}</span>
+                <span class="xf-lang-opt ${PREF_LANG==='auto'?'xf-lang-active':''}" id="xf-l-auto">Auto</span>
+                <span class="xf-lang-opt ${PREF_LANG==='en'?'xf-lang-active':''}" id="xf-l-en">En</span>
+                <span class="xf-lang-opt ${PREF_LANG==='fa'?'xf-lang-active':''}" id="xf-l-fa">Fa</span>
+            </div>
+        `;
 
         return `
-            <div class="xf-header">
-                <span class="xf-title">Forensics v2.1</span>
-                <span class="xf-risk-badge" style="background:${statusBorder}; color:#000;">${riskLabel}</span>
-            </div>
-            <div class="xf-risk-bar-bg">
-                <div class="xf-risk-bar-fill" style="width:${riskPercent}; background:${riskColor}"></div>
-            </div>
-            <div class="xf-status-box" style="border-left-color:${statusBorder}; background:${statusBg}">
-                <strong style="color:${statusBorder}">${statusTitle}</strong><br>
-                <span style="opacity:0.9">${statusDesc}</span>
-            </div>
+            <div class="xf-header"><span class="xf-title">${TEXT.title}</span><span class="xf-badge" style="background:${color}">${label}</span></div>
+            <div class="xf-bar-bg"><div class="xf-bar-fill" style="width:${pct};background:${color}"></div></div>
+            <div class="xf-status" style="border-${IS_RTL?'right':'left'}-color:${color};background:${bg}"><strong style="color:${color}">${title}</strong><br><span style="opacity:0.9">${desc}</span></div>
             <div class="xf-grid">
-                ${data.country !== "Unknown" ? `<div class="xf-row"><span class="xf-label">Location</span><span class="xf-value">📍 ${data.country}</span></div>` : ''}
-                <div class="xf-row"><span class="xf-label">Device</span><span class="xf-value">${data.device}</span></div>
-                <div class="xf-row"><span class="xf-label">Perm ID</span><span class="xf-value xf-mono">${data.id}</span></div>
-                <div class="xf-row"><span class="xf-label">Created</span><span class="xf-value">${data.created}</span></div>
-                ${data.renamed > 0 ? `<div class="xf-row"><span class="xf-label" style="color:var(--xf-orange)">Renamed</span><span class="xf-value" style="color:var(--xf-orange)">⚠️ ${data.renamed}x</span></div>` : ''}
-                ${data.isIdVerified ? `<div class="xf-row"><span class="xf-label">Identity</span><span class="xf-value" style="color:var(--xf-green)">Gov ID Verified</span></div>` : ''}
+                ${data.country!==TEXT.values.unknown ? `<div class="xf-row"><span class="xf-lbl">${TEXT.labels.location}</span><span class="xf-val">📍 ${data.country}</span></div>` : ''}
+                <div class="xf-row"><span class="xf-lbl">${TEXT.labels.device}</span><span class="xf-val">${data.deviceFull}</span></div>
+                <div class="xf-row"><span class="xf-lbl">${TEXT.labels.id}</span><span class="xf-val xf-mono">${data.id}</span></div>
+                <div class="xf-row"><span class="xf-lbl">${TEXT.labels.created}</span><span class="xf-val">${data.created}</span></div>
+                ${data.renamed>0 ? `<div class="xf-row"><span class="xf-lbl" style="color:var(--xf-orange)">${TEXT.labels.renamed}</span><span class="xf-val" style="color:var(--xf-orange)">${data.renamed}x</span></div>` : ''}
+                ${data.isIdVerified ? `<div class="xf-row"><span class="xf-lbl">${TEXT.labels.identity}</span><span class="xf-val" style="color:var(--xf-green)">${TEXT.values.gov_id}</span></div>` : ''}
             </div>
-            <div class="xf-footer">
-                <a href="${data.avatar}" target="_blank" class="xf-btn">View Original Avatar</a>
-            </div>
+            <div class="xf-ftr"><a href="${data.avatar}" target="_blank" class="xf-btn">${TEXT.btn.view_avatar}</a></div>
+            ${langHtml}
         `;
     }
 
-    // --- UI LOGIC ---
-    function showDesktopTooltip(e, html) {
+    // --- EVENTS & UI BINDING ---
+    function bindEvents(container) {
+        const auto = container.querySelector('#xf-l-auto');
+        const en = container.querySelector('#xf-l-en');
+        const fa = container.querySelector('#xf-l-fa');
+        if(auto) auto.onclick = () => setLang('auto');
+        if(en) en.onclick = () => setLang('en');
+        if(fa) fa.onclick = () => setLang('fa');
+    }
+
+    function showDesktop(e, html) {
         if (hideTimeout) clearTimeout(hideTimeout);
         if (!tooltipEl) {
             tooltipEl = document.createElement("div");
             tooltipEl.id = "xf-card";
             tooltipEl.onmouseenter = () => clearTimeout(hideTimeout);
-            tooltipEl.onmouseleave = hideDesktopTooltip;
+            tooltipEl.onmouseleave = hideDesktop;
             document.body.appendChild(tooltipEl);
         }
         tooltipEl.innerHTML = html;
+        bindEvents(tooltipEl);
         tooltipEl.className = "visible";
-        const rect = tooltipEl.getBoundingClientRect();
-        let top = e.clientY + 20;
-        let left = e.clientX;
-        if (left + rect.width > window.innerWidth) left = window.innerWidth - rect.width - 20;
-        if (top + rect.height > window.innerHeight) top = e.clientY - rect.height - 10;
-        tooltipEl.style.top = top + "px";
-        tooltipEl.style.left = left + "px";
+        let top = e.clientY + 20, left = e.clientX;
+        if (IS_RTL) left -= 320;
+        if (left + 340 > window.innerWidth) left = window.innerWidth - 360;
+        if (top + 400 > window.innerHeight) top = e.clientY - 400;
+        tooltipEl.style.top = top + "px"; tooltipEl.style.left = left + "px";
     }
+    function hideDesktop() { hideTimeout = setTimeout(() => { if (tooltipEl) tooltipEl.className = ""; }, 200); }
 
-    function hideDesktopTooltip() {
-        hideTimeout = setTimeout(() => { if (tooltipEl) tooltipEl.className = ""; }, 200);
-    }
-
-    function showMobileModal(html) {
-        let overlay = document.getElementById("xf-mobile-overlay");
+    function showMobile(html) {
+        let overlay = document.getElementById("xf-mob-overlay");
         if (!overlay) {
             overlay = document.createElement("div");
-            overlay.id = "xf-mobile-overlay";
-            overlay.innerHTML = `<div id="xf-mobile-sheet"></div>`;
+            overlay.id = "xf-mob-overlay";
+            overlay.innerHTML = `<div id="xf-mob-sheet"></div>`;
             overlay.onclick = (e) => { if (e.target === overlay) overlay.style.display = "none"; };
             document.body.appendChild(overlay);
         }
-        const sheet = document.getElementById("xf-mobile-sheet");
-        sheet.innerHTML = html + `<div class="xf-mobile-close" onclick="document.getElementById('xf-mobile-overlay').style.display='none'">Close</div>`;
+        const sheet = document.getElementById("xf-mob-sheet");
+        sheet.innerHTML = html;
+        bindEvents(sheet);
+        const closeBtn = document.createElement("div");
+        closeBtn.className = "xf-close";
+        closeBtn.textContent = TEXT.btn.close;
+        closeBtn.onclick = () => { overlay.style.display = "none"; };
+        sheet.appendChild(closeBtn);
         overlay.style.display = "flex";
     }
 
-    // --- DATA FETCH ---
-    async function fetchData(username) {
-        if (cache[username]) return cache[username];
-        const url = `https://${location.host}/i/api/graphql/${CONFIG.queryId}/AboutAccountQuery?variables=${encodeURIComponent(JSON.stringify({ screenName: username }))}&features=${encodeURIComponent(JSON.stringify(CONFIG.features))}&fieldToggles=${encodeURIComponent(JSON.stringify({withAuxiliaryUserLabels: false}))}`;
+    async function fetchData(user) {
+        if (cache[user]) return cache[user];
+        const url = `https://${location.host}/i/api/graphql/${CONFIG.queryId}/AboutAccountQuery?variables=${encodeURIComponent(JSON.stringify({screenName:user}))}&features=${encodeURIComponent(JSON.stringify(CONFIG.features))}&fieldToggles=${encodeURIComponent(JSON.stringify({withAuxiliaryUserLabels:false}))}`;
         try {
-            const resp = await fetch(url, {
-                headers: { "authorization": `Bearer ${CONFIG.bearerToken}`, "x-csrf-token": getCsrfToken(), "content-type": "application/json" }
-            });
+            const resp = await fetch(url, { headers: { "authorization": `Bearer ${CONFIG.bearerToken}`, "x-csrf-token": getCsrf(), "content-type": "application/json" } });
             const json = await resp.json();
             const res = json?.data?.user?.result || json?.data?.user_result_by_screen_name?.result;
             if (!res) return null;
 
             const about = res.about_profile || res.aboutProfile || {};
-            const core = res.core || res.legacy || {};
             const verif = res.verification_info || {};
 
-            const sourceRaw = about.source || "Unknown";
-            let deviceDisplay = sourceRaw;
+            const sourceRaw = about.source || TEXT.values.unknown;
+            let devShort = sourceRaw, devFull = sourceRaw;
             const match = sourceRaw.match(SOURCE_REGEX);
+
             if (match) {
+                const region = match[1].trim();
                 const type = match[2].toLowerCase();
-                let tech = "Device";
+                let tech = TEXT.labels.device;
                 if (type.includes("app") || type.includes("ios")) tech = "iPhone";
                 if (type.includes("play") || type.includes("android")) tech = "Android";
-                deviceDisplay = `${tech} (${match[1].trim()})`;
-            } else if (IS_MOBILE && sourceRaw !== "Unknown") {
-                 deviceDisplay = "Device"; 
+                devShort = tech;
+                devFull = `${tech} (${region})`;
+            } else if (IS_MOBILE && sourceRaw !== TEXT.values.unknown) {
+                devShort = TEXT.labels.device;
             }
 
+            const countryName = getCountryName(about.account_based_in);
+
             const data = {
-                country: resolveCountry(about.account_based_in),
-                device: deviceDisplay,
+                country: countryName,
+                device: devShort,
+                deviceFull: devFull,
                 id: res.rest_id,
-                created: formatTime(core.created_at),
+                created: fmtDate(res.core?.created_at || res.legacy?.created_at),
                 renamed: parseInt(about.username_changes?.count || 0),
                 isAccurate: about.location_accurate,
                 isIdVerified: verif.is_identity_verified === true,
                 avatar: (res.avatar?.image_url || "").replace("_normal", "_400x400")
             };
 
-            // Pill Text
             let pillText = `📍 ${data.country}`;
-            if (data.country === "Unknown") pillText = `📱 ${data.device.split(' ')[0]}`;
-            else if (!IS_MOBILE) pillText += ` | 📱 ${data.device.split(' ')[0]}`;
+            if (data.country === TEXT.values.unknown) pillText = `📱 ${IS_MOBILE ? data.device : data.deviceFull}`;
+            else if (!IS_MOBILE) pillText += ` | 📱 ${data.deviceFull}`;
+            else pillText += ` | 📱 ${data.device}`;
 
-            // Pill Color Logic (Prioritize Iran Exception)
-            let dotColor = "var(--xf-green)";
-            const isDeviceIran = (data.device || "").includes("Iran");
-            
-            if (data.isAccurate === false) {
-                // If Shield Active + Iran Device = Green (Normal)
-                // Else = Red (Detected)
-                dotColor = isDeviceIran ? "var(--xf-green)" : "var(--xf-red)";
-            } else if (data.country === "Iran" && data.isAccurate === true) {
-                dotColor = "var(--xf-orange)"; // Anomaly
-            }
+            let color = "var(--xf-green)";
+            if (!data.isAccurate) color = (data.deviceFull.includes("Iran")) ? "var(--xf-green)" : "var(--xf-red)";
+            else if (data.country === "Iran") color = "var(--xf-orange)";
 
-            cache[username] = { data, pillText, dotColor, html: generateCardHTML(data) };
-            return cache[username];
-        } catch (e) { console.error("X Forensics Error:", e); return null; }
+            cache[user] = { data, pillText, color, html: renderCard(data) };
+            return cache[user];
+        } catch(e) { console.error(e); return null; }
     }
 
-    // --- INJECT ---
-    async function inject(username) {
-        if (isInjecting) return;
-        const existingPill = document.getElementById("xf-pill");
-        if (existingPill && existingPill.dataset.user === username) return;
-        isInjecting = true;
+    async function inject(user) {
+        if (isInjecting) return; isInjecting = true;
         try {
             const header = document.querySelector('[data-testid="UserProfileHeader_Items"]');
             if (!header) return;
-            const info = await fetchData(username);
-            if (getUsername() !== username) return;
-            if (!info) return;
-            if (existingPill) existingPill.remove();
+            const info = await fetchData(user);
+            if (getUser() !== user || !info) return;
+
+            const old = document.getElementById("xf-pill");
+            if (old) old.remove();
 
             const pill = document.createElement("div");
             pill.id = "xf-pill";
-            pill.dataset.user = username;
-            pill.innerHTML = `<div class="xf-dot" style="color:${info.dotColor}"></div><span>${info.pillText}</span>`;
+            pill.innerHTML = `<div class="xf-dot" style="color:${info.color}"></div><span>${info.pillText}</span>`;
 
             if (IS_MOBILE) {
-                pill.onclick = (e) => { e.stopPropagation(); showMobileModal(info.html); };
+                pill.onclick = (e) => { e.stopPropagation(); showMobile(info.html); };
             } else {
-                pill.onmouseenter = (e) => showDesktopTooltip(e, info.html);
-                pill.onmouseleave = hideDesktopTooltip;
+                pill.onmouseenter = (e) => showDesktop(e, info.html);
+                pill.onmouseleave = hideDesktop;
             }
             header.insertBefore(pill, header.firstChild);
         } finally { isInjecting = false; }
     }
 
-    const observer = new MutationObserver(() => {
-        if (location.href !== lastUrl) {
-            lastUrl = location.href;
-            const existing = document.getElementById("xf-pill");
-            if (existing) existing.remove();
-            if (tooltipEl) tooltipEl.className = "";
-        }
-        const user = getUsername();
-        if (user && document.querySelector('[data-testid="UserProfileHeader_Items"]')) {
-            inject(user);
-        }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(() => {
+        if (location.href !== lastUrl) { lastUrl = location.href; document.getElementById("xf-pill")?.remove(); if(tooltipEl) tooltipEl.className=""; }
+        const user = getUser();
+        if (user && document.querySelector('[data-testid="UserProfileHeader_Items"]') && !document.getElementById("xf-pill")) inject(user);
+    }).observe(document.body, {childList:true, subtree:true});
+
 })();
