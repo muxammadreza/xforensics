@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         X Profile Forensics (v15.1)
+// @name         X Profile Forensics (v15.2 Mobile Fix)
 // @namespace    http://tampermonkey.net/
-// @version      15.1.0
-// @description  Forensics tool. Fixed missing status descriptions (undefined error) in v15.
+// @version      15.2.0
+// @description  Forensics tool. Fixed the missing "Database" icon in the Mobile Bottom Bar.
 // @author       https://x.com/yebekhe
 // @match        https://x.com/*
 // @match        https://twitter.com/*
@@ -22,7 +22,7 @@
 
     const TRANSLATIONS = {
         en: {
-            title: "Forensics v15.1",
+            title: "Forensics v15.2",
             menu_btn: "Forensics",
             labels: { location: "Location", device: "Device", id: "Perm ID", created: "Created", renamed: "Renamed", identity: "Identity", lang: "Language", type: "Type" },
             risk: { safe: "SAFE", detected: "DETECTED", anomaly: "ANOMALY", caution: "CAUTION", normal: "NORMAL", verified: "VERIFIED ID" },
@@ -34,7 +34,7 @@
                 shield_norm: "Shield Active (Normal)",
                 shield_norm_desc: "User identified as Iranian/West Asia using VPN. Standard behavior.",
                 anomaly: "Anomaly Detected",
-                anomaly_desc: "Direct access blocked in Iran. Likely causes: White SIM/Gov Net usage.",
+                anomaly_desc: "Direct access blocked in Iran. Likely causes: White SIM, Serverless config, or +98 Phone.",
                 hidden_anomaly: "Hidden Identity",
                 hidden_anomaly_desc: "Farsi speaker in 'West Asia' with Direct Access. High probability of Iran-based White SIM/Gov Net usage.",
                 renamed_msg: "Renamed {n}x"
@@ -69,7 +69,7 @@
             lang_sel: "Lang:"
         },
         fa: {
-            title: "تحلیلگر پروفایل ۱۵.۱",
+            title: "تحلیلگر پروفایل ۱۵.۲",
             menu_btn: "جرم‌شناسی",
             labels: { location: "موقعیت", device: "دستگاه", id: "شناسه", created: "ساخت", renamed: "تغییر نام", identity: "هویت", lang: "زبان", type: "نوع" },
             risk: { safe: "امن", detected: "هشدار", anomaly: "ناهنجاری", caution: "احتیاط", normal: "طبیعی", verified: "تایید شده" },
@@ -81,7 +81,7 @@
                 shield_norm: "سپر فعال (طبیعی)",
                 shield_norm_desc: "کاربر ایران/غرب آسیا با VPN. رفتار طبیعی.",
                 anomaly: "ناهنجاری",
-                anomaly_desc: "اتصال مستقیم در ایران غیرممکن است. دلایل: سیم‌کارت سفید یا اینترنت دولتی.",
+                anomaly_desc: "اتصال مستقیم در ایران غیرممکن است. دلایل: سیم‌کارت سفید، تانلینگ یا شماره ۹۸+.",
                 hidden_anomaly: "هویت پنهان",
                 hidden_anomaly_desc: "فارسی‌زبان در «غرب آسیا» با اتصال مستقیم. احتمال قوی: سیم‌کارت سفید یا اینترنت دولتی.",
                 renamed_msg: "{n} بار تغییر نام"
@@ -121,7 +121,6 @@
 
     // --- 2. STORAGE ---
     const STORAGE_KEY = "xf_db_v1";
-    const GITHUB_REPO_ISSUES = "https://github.com/itsyebekhe/xforensics/issues/new";
     const CLOUD_DB_URL = "https://raw.githubusercontent.com/itsyebekhe/xforensics/main/database.json";
 
     let db = {};
@@ -167,9 +166,9 @@
         .xf-menu-icon { width: 26px; height: 26px; margin-right: 20px; fill: currentColor; }
         .xf-menu-text { font-size: 20px; font-weight: 700; font-family: ${FONT_STACK}; color: var(--xf-text); }
 
-        /* Mobile Tab */
-        #xf-mob-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-grow: 1; height: 100%; cursor: pointer; }
-        .xf-mob-icon { width: 24px; height: 24px; fill: var(--xf-text); }
+        /* Mobile Tab (Improved) */
+        #xf-mob-tab { display: flex; flex-grow: 1; justify-content: center; align-items: center; height: 100%; cursor: pointer; }
+        .xf-mob-icon { width: 24px; height: 24px; fill: var(--xf-blue); } /* Blue color for visibility */
 
         /* Dashboard */
         #xf-dash-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 10001; display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px); direction: ${IS_RTL?'rtl':'ltr'}; }
@@ -196,7 +195,6 @@
         .xf-page-btn { cursor: pointer; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.1); user-select: none; }
         .xf-page-btn:hover { background: var(--xf-blue); color: #fff; }
 
-        /* Card */
         #xf-card { position: fixed; z-index: 10000; width: 320px; background: var(--xf-bg); backdrop-filter: blur(12px); border: 1px solid var(--xf-border); border-radius: 16px; padding: 16px; color: var(--xf-text); font-family: ${FONT_STACK}; box-shadow: 0 15px 40px rgba(0,0,0,0.7); opacity: 0; transform: translateY(10px); transition: 0.2s; pointer-events: none; direction: ${IS_RTL?'rtl':'ltr'}; text-align: ${IS_RTL?'right':'left'}; }
         #xf-card.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
         .xf-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--xf-border); padding-bottom: 10px; margin-bottom: 10px; }
@@ -237,8 +235,6 @@
 
     let lastUrl = location.href;
     let tooltipEl = null, hideTimeout = null, isInjecting = false;
-
-    // Pagination State
     let currentPage = 1;
     const ITEMS_PER_PAGE = 50;
 
@@ -258,11 +254,8 @@
         if (document.getElementById('xf-menu-btn') || document.getElementById('xf-mob-tab')) return;
 
         if (!IS_MOBILE) {
-            // Desktop Sidebar
             const nav = document.querySelector('nav[aria-label="Primary"]');
             if (!nav) return;
-            const anchor = nav.querySelector('a[href="/home"]');
-            if (!anchor) return;
 
             const item = document.createElement('div');
             item.id = "xf-menu-btn";
@@ -277,8 +270,7 @@
             if (more) more.parentNode.insertBefore(item, more);
             else nav.appendChild(item);
         } else {
-            // Mobile Tab
-            const bottomBar = document.querySelector('[data-testid="AppTabBar"]');
+            const bottomBar = document.querySelector('[data-testid="AppTabBar"] [role="tablist"]');
             if (!bottomBar) return;
             const tab = document.createElement('div');
             tab.id = "xf-mob-tab";
@@ -358,7 +350,9 @@
             <div id="xf-dash-box">
                 <div class="xf-dash-title">${TEXT.dashboard.title}</div>
                 <div style="font-size:12px;color:#71767b;margin-bottom:10px;">${TEXT.dashboard.count.replace("{n}", count)}</div>
+
                 <input id="xf-filter-loc" class="xf-input" placeholder="${TEXT.dashboard.filter_loc}">
+
                 <select id="xf-filter-risk" class="xf-input">
                     <option value="ALL">${TEXT.dashboard.opt_all}</option>
                     <option value="${TEXT.risk.anomaly}">${TEXT.risk.anomaly}</option>
@@ -366,9 +360,11 @@
                     <option value="${TEXT.risk.safe}">${TEXT.risk.safe}</option>
                     <option value="${TEXT.risk.normal}">${TEXT.risk.normal}</option>
                 </select>
+
                 <div style="font-size:11px;color:var(--xf-dim);margin-top:5px;font-weight:bold;">${TEXT.dashboard.list_header}</div>
                 <div id="xf-user-list"></div>
                 <div id="xf-pagination" class="xf-pagination"></div>
+
                 <div style="display:flex;gap:5px;margin-top:10px;">
                     <button id="xf-btn-backup" class="xf-dash-btn xf-btn-blue" style="flex:1;">${TEXT.dashboard.btn_backup}</button>
                     <button id="xf-btn-cloud" class="xf-dash-btn xf-btn-purple" style="flex:1;">${TEXT.dashboard.btn_cloud}</button>
@@ -379,6 +375,7 @@
                 </div>
                 <button id="xf-btn-csv" class="xf-dash-btn xf-btn-blue" style="background:transparent;border:1px solid var(--xf-blue);color:var(--xf-blue)">${TEXT.dashboard.btn_export}</button>
                 <button id="xf-btn-clear" class="xf-dash-btn xf-btn-red">${TEXT.dashboard.btn_clear}</button>
+
                 <div id="xf-dash-close-btn" style="margin-top:15px;text-align:center;font-size:12px;cursor:pointer;color:#71767b;">${TEXT.btn.close}</div>
             </div>
         `;
@@ -423,7 +420,8 @@
         const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `contribution.json`;
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
         alert(TEXT.dashboard.contrib_info);
-        const issueUrl = `${GITHUB_REPO_ISSUES}?title=Database+Contribution+(${count}+Users)`;
+        const encodedBody = encodeURIComponent(`### Community Database Contribution\n\n**User Count:** ${count}\n\n**Instructions:**\nI have attached my \`contribution.json\` file below by dragging and dropping it into this text box.`);
+        const issueUrl = `${GITHUB_REPO_ISSUES}?title=Database+Contribution+(${count}+Users)&body=${encodedBody}`;
         window.open(issueUrl, '_blank');
     }
 
@@ -526,7 +524,7 @@
         if (data.renamed > 0 && label === TEXT.risk.safe) { color = "var(--xf-orange)"; label = TEXT.risk.caution; pct = "40%"; }
         if (data.isIdVerified) { pct = "0%"; label = TEXT.risk.verified; color = "var(--xf-blue)"; }
 
-        data.riskLabel = label; // Save risk
+        data.riskLabel = label;
 
         const langHtml = `
             <div class="xf-lang-row"><span>${TEXT.lang_sel}</span><span class="xf-lang-opt ${PREF_LANG==='auto'?'xf-lang-active':''}" id="xf-l-auto">Auto</span><span class="xf-lang-opt ${PREF_LANG==='en'?'xf-lang-active':''}" id="xf-l-en">En</span><span class="xf-lang-opt ${PREF_LANG==='fa'?'xf-lang-active':''}" id="xf-l-fa">Fa</span></div>
@@ -558,6 +556,7 @@
         container.querySelector('#xf-l-auto').onclick = () => setLang('auto');
         container.querySelector('#xf-l-en').onclick = () => setLang('en');
         container.querySelector('#xf-l-fa').onclick = () => setLang('fa');
+
         const retryBtn = container.querySelector('#xf-retry-btn');
         if(retryBtn) {
             retryBtn.onclick = async (e) => {
@@ -687,7 +686,7 @@
         if (user && document.querySelector('[data-testid="UserProfileHeader_Items"]') && !document.getElementById("xf-pill")) inject(user);
         injectLists();
         injectNativeMenu();
-    }, 1000);
+    }, 1000); // 1s Poll Backup
 
     setTimeout(initDashboard, 2000);
 
