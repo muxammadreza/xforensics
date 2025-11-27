@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         X Profile Forensics (v15.4.1)
+// @name         X Profile Forensics (v18.0)
 // @namespace    http://tampermonkey.net/
-// @version      15.4.1
-// @description  Forensics tool. Restored Mobile Floating Button (FAB) positioned above the bottom tab bar.
+// @version      18.0.0
+// @description  Forensics tool. Moved Language Selector to Dashboard. Fixed Sidebar Button injection on Desktop.
 // @author       https://x.com/yebekhe
 // @match        https://x.com/*
 // @match        https://twitter.com/*
@@ -22,7 +22,7 @@
 
     const TRANSLATIONS = {
         en: {
-            title: "Forensics v15.4",
+            title: "Forensics v18.0",
             menu_btn: "Forensics",
             labels: { location: "Location", device: "Device", id: "Perm ID", created: "Created", renamed: "Renamed", identity: "Identity", lang: "Language", type: "Type" },
             risk: { safe: "SAFE", detected: "DETECTED", anomaly: "ANOMALY", caution: "CAUTION", normal: "NORMAL", verified: "VERIFIED ID" },
@@ -34,7 +34,7 @@
                 shield_norm: "Shield Active (Normal)",
                 shield_norm_desc: "User identified as Iranian/West Asia using VPN. Standard behavior.",
                 anomaly: "Anomaly Detected",
-                anomaly_desc: "Direct access blocked in Iran. Likely causes: White SIM, Serverless config.",
+                anomaly_desc: "Direct access blocked in Iran. Likely causes: White SIM, Serverless config, or +98 Phone.",
                 hidden_anomaly: "Hidden Identity",
                 hidden_anomaly_desc: "Farsi speaker in 'West Asia' with Direct Access. High probability of Iran-based White SIM/Gov Net usage.",
                 renamed_msg: "Renamed {n}x"
@@ -42,6 +42,7 @@
             dashboard: {
                 title: "Forensics Database",
                 btn_open: "📂 DB",
+                search_placeholder: "Search Username or ID...",
                 filter_loc: "Filter Location",
                 filter_risk: "Filter Risk Level",
                 opt_all: "All Risks",
@@ -66,10 +67,12 @@
             },
             btn: { view_avatar: "View Avatar", close: "Close", retry: "Refresh Data" },
             values: { gov: "Government", unknown: "Unknown", west_asia: "West Asia", fa_script: "Farsi/Arabic" },
-            lang_sel: "Lang:"
+            notes_placeholder: "Add personal notes...",
+            osint_titles: { archive: "Check Wayback Machine", google: "Google Dork", lens: "Reverse Image Search" },
+            lang_sel: "Interface Language:"
         },
         fa: {
-            title: "تحلیلگر پروفایل ۱۵.۴",
+            title: "تحلیلگر پروفایل ۱۸.۰",
             menu_btn: "جرم‌شناسی",
             labels: { location: "موقعیت", device: "دستگاه", id: "شناسه", created: "ساخت", renamed: "تغییر نام", identity: "هویت", lang: "زبان", type: "نوع" },
             risk: { safe: "امن", detected: "هشدار", anomaly: "ناهنجاری", caution: "احتیاط", normal: "طبیعی", verified: "تایید شده" },
@@ -81,7 +84,7 @@
                 shield_norm: "سپر فعال (طبیعی)",
                 shield_norm_desc: "کاربر ایران/غرب آسیا با VPN. رفتار طبیعی.",
                 anomaly: "ناهنجاری",
-                anomaly_desc: "اتصال مستقیم در ایران غیرممکن است. دلایل: سیم‌کارت سفید، کانفیگ سرورلس.",
+                anomaly_desc: "اتصال مستقیم در ایران غیرممکن است. دلایل: سیم‌کارت سفید، تانلینگ یا شماره ۹۸+.",
                 hidden_anomaly: "هویت پنهان",
                 hidden_anomaly_desc: "فارسی‌زبان در «غرب آسیا» با اتصال مستقیم. احتمال قوی: سیم‌کارت سفید یا اینترنت دولتی.",
                 renamed_msg: "{n} بار تغییر نام"
@@ -89,6 +92,7 @@
             dashboard: {
                 title: "پایگاه داده جرم‌شناسی",
                 btn_open: "📂 دیتا",
+                search_placeholder: "جستجوی نام کاربری یا ID...",
                 filter_loc: "فیلتر کشور",
                 filter_risk: "فیلتر ریسک",
                 opt_all: "همه",
@@ -113,7 +117,9 @@
             },
             btn: { view_avatar: "آواتار اصلی", close: "بستن", retry: "بروزرسانی" },
             values: { gov: "دولتی", unknown: "نامشخص", west_asia: "غرب آسیا", fa_script: "فارسی/عربی" },
-            lang_sel: "زبان:"
+            notes_placeholder: "یادداشت شخصی بنویسید...",
+            osint_titles: { archive: "آرشیو اینترنت", google: "جستجوی گوگل", lens: "جستجوی تصویر" },
+            lang_sel: "زبان رابط کاربری:"
         }
     };
 
@@ -161,21 +167,21 @@
         .xf-mini-pill.xf-loaded { background: transparent; border: none; padding: 0 4px; font-weight: bold; }
         @keyframes xf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-        /* Native Menu Item (Desktop) */
-        .xf-menu-item { display: flex; align-items: center; padding: 12px; cursor: pointer; transition: 0.2s; border-radius: 99px; }
+        /* Sidebar Button */
+        .xf-menu-item { display: flex; align-items: center; padding: 12px; cursor: pointer; transition: 0.2s; border-radius: 99px; margin: 4px 0; }
         .xf-menu-item:hover { background: rgba(239, 243, 244, 0.1); }
         .xf-menu-icon { width: 26px; height: 26px; margin-right: 20px; fill: currentColor; }
-        .xf-menu-text { font-size: 20px; font-weight: 700; font-family: ${FONT_STACK}; color: var(--xf-text); }
+        .xf-menu-text { font-size: 20px; font-weight: 700; font-family: ${FONT_STACK}; color: var(--xf-text); line-height: 24px; }
 
-        /* Mobile Floating Button (FAB) */
-        #xf-mob-fab { position: fixed; bottom: 75px; left: 20px; width: 48px; height: 48px; background: var(--xf-blue); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(29,155,240,0.4); cursor: pointer; z-index: 9000; transition: 0.2s; border: 2px solid #000; }
-        #xf-mob-fab:hover { transform: scale(1.1); }
-        .xf-mob-icon { width: 24px; height: 24px; fill: #fff; }
+        /* Mobile Top Bar Icon */
+        #xf-mob-top-btn { display: flex; align-items: center; justify-content: center; margin-left: auto; margin-right: 10px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; transition: 0.2s; }
+        #xf-mob-top-btn:hover { background: rgba(29,155,240,0.15); }
+        .xf-mob-icon { width: 22px; height: 22px; fill: var(--xf-text); }
 
         /* Dashboard */
         #xf-dash-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 10001; display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px); direction: ${IS_RTL?'rtl':'ltr'}; }
         #xf-dash-box { width: 90%; max-width: 400px; max-height: 85vh; background: #000; border: 1px solid var(--xf-border); border-radius: 16px; padding: 24px; font-family: ${FONT_STACK}; box-shadow: 0 20px 50px rgba(0,0,0,0.8); color: #fff; display: flex; flex-direction: column; }
-        .xf-dash-title { font-size: 18px; font-weight: 800; margin-bottom: 16px; border-bottom: 1px solid var(--xf-border); padding-bottom: 10px; }
+        .xf-dash-title { font-size: 18px; font-weight: 800; margin-bottom: 16px; border-bottom: 1px solid var(--xf-border); padding-bottom: 10px; display:flex; justify-content:space-between; align-items:center; }
         .xf-input { width: 100%; padding: 10px; margin-bottom: 12px; background: #16181c; border: 1px solid var(--xf-border); color: #fff; border-radius: 8px; outline: none; box-sizing: border-box; font-family: ${FONT_STACK}; }
         .xf-input:focus { border-color: var(--xf-blue); }
         .xf-dash-btn { width: 100%; padding: 10px; margin-top: 8px; border-radius: 99px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; font-family: ${FONT_STACK}; font-size: 13px; }
@@ -197,6 +203,7 @@
         .xf-page-btn { cursor: pointer; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.1); user-select: none; }
         .xf-page-btn:hover { background: var(--xf-blue); color: #fff; }
 
+        /* Card */
         #xf-card { position: fixed; z-index: 10000; width: 320px; background: var(--xf-bg); backdrop-filter: blur(12px); border: 1px solid var(--xf-border); border-radius: 16px; padding: 16px; color: var(--xf-text); font-family: ${FONT_STACK}; box-shadow: 0 15px 40px rgba(0,0,0,0.7); opacity: 0; transform: translateY(10px); transition: 0.2s; pointer-events: none; direction: ${IS_RTL?'rtl':'ltr'}; text-align: ${IS_RTL?'right':'left'}; }
         #xf-card.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
         .xf-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--xf-border); padding-bottom: 10px; margin-bottom: 10px; }
@@ -214,14 +221,24 @@
         .xf-mono { font-family: monospace; background: rgba(255,255,255,0.1); padding: 1px 4px; border-radius: 4px; }
         .xf-ftr { margin-top: 15px; text-align: center; }
         .xf-btn { display: block; padding: 8px; background: rgba(29,155,240,0.15); color: var(--xf-blue); border-radius: 8px; font-weight: bold; font-size: 12px; text-decoration: none; font-family: ${FONT_STACK}; }
-        .xf-lang-row { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--xf-border); display: flex; justify-content: center; gap: 8px; font-size: 11px; color: var(--xf-dim); }
+
+        /* Language Switcher */
+        .xf-lang-section { margin-top:10px; font-size:11px; color:var(--xf-dim); display:flex; gap:5px; align-items:center; }
         .xf-lang-opt { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: 0.2s; }
         .xf-lang-opt:hover { background: rgba(255,255,255,0.1); color: #fff; }
         .xf-lang-active { background: rgba(29,155,240,0.2); color: var(--xf-blue); font-weight: bold; }
+
         #xf-mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 99999; display: none; align-items: flex-end; justify-content: center; backdrop-filter: blur(5px); direction: ${IS_RTL?'rtl':'ltr'}; }
         #xf-mob-sheet { width: 100%; max-width: 450px; background: #000; border-top: 1px solid var(--xf-border); border-radius: 20px 20px 0 0; padding: 20px; animation: xf-up 0.3s; font-family: ${FONT_STACK}; }
         @keyframes xf-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .xf-close { margin-top: 15px; padding: 12px; background: #eff3f4; color: #000; text-align: center; border-radius: 99px; font-weight: 700; font-size: 14px; cursor: pointer; user-select: none; }
+
+        /* Notes & OSINT */
+        .xf-textarea { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--xf-border); color: #fff; border-radius: 8px; padding: 8px; margin-top: 12px; font-family: ${FONT_STACK}; font-size: 12px; resize: vertical; min-height: 50px; box-sizing: border-box; outline: none; }
+        .xf-textarea:focus { border-color: var(--xf-blue); }
+        .xf-osint-row { display: flex; gap: 10px; margin-top: 12px; justify-content: center; }
+        .xf-osint-icon { font-size: 16px; cursor: pointer; opacity: 0.7; transition: 0.2s; text-decoration: none; }
+        .xf-osint-icon:hover { opacity: 1; transform: scale(1.1); }
     `;
 
     const styleEl = document.createElement("style");
@@ -253,34 +270,57 @@
 
     // --- DASHBOARD UI ---
     function injectNativeMenu() {
-        if (document.getElementById('xf-menu-btn') || document.getElementById('xf-mob-fab')) return;
+        if (document.getElementById('xf-menu-btn') || document.getElementById('xf-mob-top-btn')) return;
 
         if (!IS_MOBILE) {
-            // Desktop Sidebar
+            // Fixed Selector for Desktop Sidebar
             const nav = document.querySelector('nav[aria-label="Primary"]');
             if (!nav) return;
-            const anchor = nav.querySelector('a[href="/home"]');
-            if (!anchor) return;
 
-            const item = document.createElement('div');
+            const item = document.createElement('a');
             item.id = "xf-menu-btn";
             item.className = "xf-menu-item";
+            item.href = "#"; // Prevent navigation
+            item.setAttribute("role", "link");
             item.innerHTML = `
+                <div style="display:flex;align-items:center;">
                 <svg viewBox="0 0 24 24" class="xf-menu-icon"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8 8 8zM11 7h2v6h-2zm0 8h2v2h-2z"></path></svg>
                 <span class="xf-menu-text">${TEXT.menu_btn}</span>
+                </div>
             `;
-            item.onclick = showDashboard;
+            item.onclick = (e) => { e.preventDefault(); showDashboard(); };
 
-            const more = nav.querySelector('[data-testid="AppTabBar_More_Menu"]');
-            if (more) more.parentNode.insertBefore(item, more);
-            else nav.appendChild(item);
+            // Insert as the 4th or 5th item (After Lists or Bookmarks)
+            // Fallback: Append to end if specific position not found
+            const bookmarks = nav.querySelector('a[href="/i/bookmarks"]');
+            if (bookmarks) {
+                bookmarks.parentNode.insertBefore(item, bookmarks.nextSibling);
+            } else {
+                nav.appendChild(item);
+            }
+
         } else {
-            // Mobile FAB (Bottom-Left)
-            const fab = document.createElement('div');
-            fab.id = "xf-mob-fab";
-            fab.innerHTML = `<svg viewBox="0 0 24 24" class="xf-mob-icon"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"></path></svg>`;
-            fab.onclick = showDashboard;
-            document.body.appendChild(fab);
+            // Mobile Top Bar
+            const topBar = document.querySelector('[data-testid="TopNavBar"]');
+            if (!topBar) return;
+
+            const btn = document.createElement('div');
+            btn.id = 'xf-mob-top-btn';
+            btn.innerHTML = `<svg viewBox="0 0 24 24" class="xf-mob-icon" style="fill:var(--xf-text)"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"></path></svg>`;
+            btn.onclick = showDashboard;
+
+            if (topBar.children.length > 0) {
+                const rightSide = topBar.children[0].lastElementChild;
+                if (rightSide) {
+                   rightSide.insertBefore(btn, rightSide.firstChild);
+                   return;
+                }
+            }
+
+            btn.style.position = 'absolute';
+            btn.style.right = '50px';
+            btn.style.top = '10px';
+            topBar.appendChild(btn);
         }
     }
 
@@ -304,6 +344,7 @@
         listContainer.innerHTML = '';
         const locFilter = document.getElementById("xf-filter-loc").value.toLowerCase();
         const riskFilter = document.getElementById("xf-filter-risk").value;
+        const searchFilter = document.getElementById("xf-search-user").value.toLowerCase();
 
         const allKeys = Object.keys(db).reverse();
         const filteredKeys = [];
@@ -311,8 +352,11 @@
         for (const user of allKeys) {
             const entry = db[user].data;
             const riskTag = entry.riskLabel;
+
             if (locFilter && !entry.country.toLowerCase().includes(locFilter)) continue;
             if (riskFilter !== "ALL" && riskTag !== riskFilter) continue;
+            if (searchFilter && !user.toLowerCase().includes(searchFilter) && !entry.id.includes(searchFilter)) continue;
+
             filteredKeys.push(user);
         }
 
@@ -352,9 +396,20 @@
 
         overlay.innerHTML = `
             <div id="xf-dash-box">
-                <div class="xf-dash-title">${TEXT.dashboard.title}</div>
+                <div class="xf-dash-title">
+                    ${TEXT.dashboard.title}
+                    <div class="xf-lang-section">
+                        <span>${TEXT.lang_sel}</span>
+                        <span class="xf-lang-opt ${PREF_LANG==='auto'?'xf-lang-active':''}" id="xf-dash-l-auto">Auto</span>
+                        <span class="xf-lang-opt ${PREF_LANG==='en'?'xf-lang-active':''}" id="xf-dash-l-en">En</span>
+                        <span class="xf-lang-opt ${PREF_LANG==='fa'?'xf-lang-active':''}" id="xf-dash-l-fa">Fa</span>
+                    </div>
+                </div>
                 <div style="font-size:12px;color:#71767b;margin-bottom:10px;">${TEXT.dashboard.count.replace("{n}", count)}</div>
+
+                <input id="xf-search-user" class="xf-input" placeholder="${TEXT.dashboard.search_placeholder}">
                 <input id="xf-filter-loc" class="xf-input" placeholder="${TEXT.dashboard.filter_loc}">
+
                 <select id="xf-filter-risk" class="xf-input">
                     <option value="ALL">${TEXT.dashboard.opt_all}</option>
                     <option value="${TEXT.risk.anomaly}">${TEXT.risk.anomaly}</option>
@@ -362,9 +417,11 @@
                     <option value="${TEXT.risk.safe}">${TEXT.risk.safe}</option>
                     <option value="${TEXT.risk.normal}">${TEXT.risk.normal}</option>
                 </select>
+
                 <div style="font-size:11px;color:var(--xf-dim);margin-top:5px;font-weight:bold;">${TEXT.dashboard.list_header}</div>
                 <div id="xf-user-list"></div>
                 <div id="xf-pagination" class="xf-pagination"></div>
+
                 <div style="display:flex;gap:5px;margin-top:10px;">
                     <button id="xf-btn-backup" class="xf-dash-btn xf-btn-blue" style="flex:1;">${TEXT.dashboard.btn_backup}</button>
                     <button id="xf-btn-cloud" class="xf-dash-btn xf-btn-purple" style="flex:1;">${TEXT.dashboard.btn_cloud}</button>
@@ -375,12 +432,14 @@
                 </div>
                 <button id="xf-btn-csv" class="xf-dash-btn xf-btn-blue" style="background:transparent;border:1px solid var(--xf-blue);color:var(--xf-blue)">${TEXT.dashboard.btn_export}</button>
                 <button id="xf-btn-clear" class="xf-dash-btn xf-btn-red">${TEXT.dashboard.btn_clear}</button>
+
                 <div id="xf-dash-close-btn" style="margin-top:15px;text-align:center;font-size:12px;cursor:pointer;color:#71767b;">${TEXT.btn.close}</div>
             </div>
         `;
 
         overlay.style.display = "flex";
 
+        document.getElementById("xf-search-user").oninput = () => { currentPage = 1; renderUserList(db); };
         document.getElementById("xf-filter-loc").oninput = () => { currentPage = 1; renderUserList(db); };
         document.getElementById("xf-filter-risk").onchange = () => { currentPage = 1; renderUserList(db); };
         document.getElementById("xf-btn-backup").onclick = backupJSON;
@@ -390,6 +449,11 @@
         document.getElementById("xf-btn-csv").onclick = exportCSV;
         document.getElementById("xf-btn-clear").onclick = clearCache;
         document.getElementById("xf-dash-close-btn").onclick = () => { overlay.style.display = "none"; };
+
+        // Bind Language Switcher in Dashboard
+        document.getElementById('xf-dash-l-auto').onclick = () => setLang('auto');
+        document.getElementById('xf-dash-l-en').onclick = () => setLang('en');
+        document.getElementById('xf-dash-l-fa').onclick = () => setLang('fa');
 
         renderUserList(db);
     }
@@ -502,6 +566,13 @@
         return mini;
     }
 
+    // --- NOTES LOGIC ---
+    function saveNote(user, note) {
+        if (!db[user]) return;
+        db[user].note = note;
+        saveDB();
+    }
+
     function renderCardHTML(data, username) {
         let color = "var(--xf-green)", label = TEXT.risk.safe, pct = "5%", title = TEXT.status.high_conf, desc = TEXT.status.high_desc, bg = "rgba(0, 186, 124, 0.1)";
         const isTargetLoc = (data.countryCode === "Iran" || data.countryCode === "West Asia");
@@ -525,9 +596,7 @@
 
         data.riskLabel = label;
 
-        const langHtml = `
-            <div class="xf-lang-row"><span>${TEXT.lang_sel}</span><span class="xf-lang-opt ${PREF_LANG==='auto'?'xf-lang-active':''}" id="xf-l-auto">Auto</span><span class="xf-lang-opt ${PREF_LANG==='en'?'xf-lang-active':''}" id="xf-l-en">En</span><span class="xf-lang-opt ${PREF_LANG==='fa'?'xf-lang-active':''}" id="xf-l-fa">Fa</span></div>
-        `;
+        const existingNote = db[username]?.note || "";
 
         return `
             <div class="xf-header">
@@ -545,16 +614,21 @@
                 ${data.renamed>0 ? `<div class="xf-row"><span class="xf-lbl" style="color:var(--xf-orange)">${TEXT.labels.renamed}</span><span class="xf-val" style="color:var(--xf-orange)">${data.renamed}x</span></div>` : ''}
                 ${data.isIdVerified ? `<div class="xf-row"><span class="xf-lbl">${TEXT.labels.identity}</span><span class="xf-val" style="color:var(--xf-green)">${TEXT.values.gov_id}</span></div>` : ''}
             </div>
+
+            <textarea class="xf-textarea" id="xf-note-input" data-user="${username}" placeholder="${TEXT.notes_placeholder}">${existingNote}</textarea>
+
+            <div class="xf-osint-row">
+                <a href="https://web.archive.org/web/*/twitter.com/${username}" target="_blank" title="${TEXT.osint_titles.archive}" class="xf-osint-icon">🏛️</a>
+                <a href="https://www.google.com/search?q=%22${username}%22" target="_blank" title="${TEXT.osint_titles.google}" class="xf-osint-icon">🔍</a>
+                <a href="https://lens.google.com/upload?url=${encodeURIComponent(data.avatar)}" target="_blank" title="${TEXT.osint_titles.lens}" class="xf-osint-icon">📷</a>
+            </div>
+
             <div class="xf-ftr"><a href="${data.avatar}" target="_blank" class="xf-btn">${TEXT.btn.view_avatar}</a></div>
-            ${langHtml}
         `;
     }
 
     // --- UI UTILS ---
     function bindEvents(container) {
-        container.querySelector('#xf-l-auto').onclick = () => setLang('auto');
-        container.querySelector('#xf-l-en').onclick = () => setLang('en');
-        container.querySelector('#xf-l-fa').onclick = () => setLang('fa');
         const retryBtn = container.querySelector('#xf-retry-btn');
         if(retryBtn) {
             retryBtn.onclick = async (e) => {
@@ -567,6 +641,12 @@
                     if(pill && pill.dataset.user === user) { pill.innerHTML = `<div class="xf-dot" style="color:${newData.color}"></div><span>${newData.pillText}</span>`; }
                 }
             };
+        }
+        const noteInput = container.querySelector('#xf-note-input');
+        if(noteInput) {
+            noteInput.addEventListener('input', (e) => {
+                saveNote(e.target.dataset.user, e.target.value);
+            });
         }
     }
 
