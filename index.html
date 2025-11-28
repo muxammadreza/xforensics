@@ -50,6 +50,14 @@
 </head>
 <body class="bg-slate-950 text-slate-200 min-h-screen flex flex-col font-sans">
 
+    <!-- Lightbox Overlay -->
+    <div id="lightbox" class="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4 cursor-zoom-out transition-opacity duration-300 opacity-0">
+        <img id="lightbox-img" src="" class="max-w-full max-h-full rounded-lg shadow-2xl transform scale-95 transition-transform duration-300" alt="Zoomed Avatar">
+        <button onclick="closeLightbox()" class="absolute top-6 right-6 p-3 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors">
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+    </div>
+
     <!-- Navbar -->
     <nav class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -73,8 +81,8 @@
         
         <!-- Header -->
         <div class="text-center mb-12">
-            <h1 class="text-3xl md:text-5xl font-black text-white mb-4">
-                رصدخانه <span class="text-red-500">ناهنجاری‌های</span> توییتر
+            <h1 class="text-3xl md:text-5xl font-black text-slate-900 dark:text-white mb-4">
+                رصدخانه <span class="text-red-600">ناهنجاری‌های</span> توییتر
             </h1>
             <p class="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed font-medium">
                 پایگاه داده زنده از حساب‌های کاربری که با موقعیت «ایران» یا «غرب آسیا» اما بدون استفاده از فیلترشکن (Direct Access) به توییتر متصل هستند.
@@ -159,6 +167,37 @@
         let filteredData = [];
         let currentPage = 1;
         const itemsPerPage = 30;
+
+        // --- LIGHTBOX LOGIC ---
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightbox-img');
+
+        function openLightbox(src) {
+            // Use 'orig' quality instead of 'normal' for high-res
+            const highRes = src.replace("_normal", "_orig").replace("_400x400", "_orig");
+            lightboxImg.src = highRes;
+            lightbox.classList.remove('hidden');
+            setTimeout(() => {
+                lightbox.classList.remove('opacity-0');
+                lightboxImg.classList.remove('scale-95');
+                lightboxImg.classList.add('scale-100');
+            }, 10);
+            document.body.style.overflow = 'hidden'; // Lock scroll
+        }
+
+        function closeLightbox() {
+            lightbox.classList.add('opacity-0');
+            lightboxImg.classList.remove('scale-100');
+            lightboxImg.classList.add('scale-95');
+            setTimeout(() => {
+                lightbox.classList.add('hidden');
+                document.body.style.overflow = '';
+            }, 300);
+        }
+
+        // Close on background click or ESC
+        lightbox.addEventListener('click', (e) => { if(e.target === lightbox) closeLightbox(); });
+        window.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeLightbox(); });
 
         // --- FETCH DATA ---
         async function init() {
@@ -274,7 +313,7 @@
                 const card = `
                 <div class="bg-slate-900 rounded-2xl p-5 border border-slate-800 hover:border-slate-600 transition-all flex flex-col gap-4 group relative">
                     <div class="flex items-start gap-4">
-                        <img src="${avatar}" class="w-14 h-14 rounded-full object-cover border-2 border-orange-500/50 p-0.5" loading="lazy" onerror="this.src='https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png'">
+                        <img src="${avatar}" class="w-14 h-14 rounded-full object-cover border-2 border-orange-500/50 p-0.5 cursor-zoom-in hover:scale-105 transition-transform" loading="lazy" onerror="this.src='https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png'" onclick="openLightbox('${avatar}')">
                         <div class="flex-1 min-w-0 text-right font-sans">
                             <div class="flex justify-between items-start">
                                 <a href="https://x.com/${user.username}" target="_blank" class="text-lg font-bold text-white hover:text-blue-400 truncate dir-ltr">@${user.username}</a>
