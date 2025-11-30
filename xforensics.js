@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         X Profile Forensics (v19.0.0)
+// @name         X Profile Forensics (v19.1)
 // @namespace    http://tampermonkey.net/
-// @version      19.0.0
-// @description  Forensics tool. Added: Auto-detection of pre-blocked users & Privacy mode for Exports (excludes block status).
+// @version      19.1.0
+// @description  Forensics tool. Added checkbox selectors to Batch Mode so users can choose exactly which fields to export.
 // @author       https://x.com/yebekhe
 // @match        https://x.com/*
 // @match        https://twitter.com/*
@@ -22,7 +22,7 @@
 
     const TRANSLATIONS = {
         en: {
-            title: "Forensics v19.0",
+            title: "Forensics v19.1",
             menu_btn: "Forensics",
             labels: { location: "Location", device: "Device", id: "Perm ID", created: "Created", renamed: "Renamed", identity: "Identity", lang: "Language", type: "Type" },
             risk: { safe: "SAFE", detected: "DETECTED", anomaly: "ANOMALY", caution: "CAUTION", normal: "NORMAL", verified: "VERIFIED ID" },
@@ -62,6 +62,7 @@
                 page_info: "Page {c} of {t}",
                 msg_cleared: "Database wiped successfully!",
                 msg_restored: "Restored {n} users.",
+                msg_imported_batch: "Imported {n} users from Batch file with full details.",
                 msg_cloud_ok: "Success! Added {n} users from GitHub.",
                 msg_cloud_fail: "Failed to fetch database.",
                 msg_err: "Invalid file.",
@@ -87,6 +88,7 @@
                 rate_limit_msg: "API Rate Limit hit. Pausing for 1 minute...",
                 rate_limit_wait: "Pausing: {s} seconds remaining...",
                 export_filename: "batch_export",
+                fields_label: "Select Fields to Export:",
                 col_username: "Username",
                 col_name: "Display Name",
                 col_id_changes: "ID Change Count",
@@ -97,6 +99,10 @@
                 col_location_status: "Location Status (0: None, 1: Accurate/i, 2: VPN/Proxy)",
                 col_gender: "Gender (2: Unknown)",
                 col_numeric_id: "Numeric ID",
+                col_location: "Location",
+                col_avatar: "Avatar URL",
+                col_lang: "Language (fa/other)",
+                col_verified: "Verified (0/1)"
             },
             btn: { view_avatar: "View Avatar", close: "Close", retry: "Refresh Data" },
             values: { gov: "Government", unknown: "Unknown", west_asia: "West Asia", fa_script: "Farsi/Arabic" },
@@ -105,7 +111,7 @@
             lang_sel: "Lang:"
         },
         fa: {
-            title: "تحلیلگر پروفایل ۱۹.۰",
+            title: "تحلیلگر پروفایل ۱۹.۱",
             menu_btn: "جرم‌شناسی",
             labels: { location: "موقعیت", device: "دستگاه", id: "شناسه", created: "ساخت", renamed: "تغییر نام", identity: "هویت", lang: "زبان", type: "نوع" },
             risk: { safe: "امن", detected: "هشدار", anomaly: "ناهنجاری", caution: "احتیاط", normal: "طبیعی", verified: "تایید شده" },
@@ -145,6 +151,7 @@
                 page_info: "صفحه {c} از {t}",
                 msg_cleared: "پایگاه داده پاک شد!",
                 msg_restored: "تعداد {n} کاربر بازیابی شد.",
+                msg_imported_batch: "تعداد {n} کاربر از فایل Batch با جزئیات کامل وارد شد.",
                 msg_cloud_ok: "موفق! {n} کاربر از گیت‌هاب اضافه شد.",
                 msg_cloud_fail: "خطا در دریافت دیتابیس.",
                 msg_err: "فایل نامعتبر است.",
@@ -170,6 +177,7 @@
                 rate_limit_msg: "محدودیت نرخ API فعال شد. ۱ دقیقه صبر می‌کند...",
                 rate_limit_wait: "توقف: {s} ثانیه باقی مانده...",
                 export_filename: "خروجی-دسته-ای",
+                fields_label: "انتخاب فیلدها برای خروجی:",
                 col_username: "نام کاربری",
                 col_name: "نام نمایشی",
                 col_id_changes: "تعداد تغییر نام",
@@ -180,6 +188,10 @@
                 col_location_status: "وضعیت مکان (0: بدون علامت, 1: دقیق, 2: VPN/پروکسی)",
                 col_gender: "جنسیت (2: نامشخص)",
                 col_numeric_id: "آی‌دی عددی",
+                col_location: "موقعیت",
+                col_avatar: "لینک آواتار",
+                col_lang: "زبان (fa/other)",
+                col_verified: "تیک (0/1)"
             },
             btn: { view_avatar: "آواتار اصلی", close: "بستن", retry: "بروزرسانی" },
             values: { gov: "دولتی", unknown: "نامشخص", west_asia: "غرب آسیا", fa_script: "فارسی/عربی" },
@@ -204,8 +216,26 @@
     let abortBlock = false;
 
     // Globals for Batch Processing
-    const BATCH_DELAY = 1000; // 1 second delay
-    const RATE_LIMIT_PAUSE = 60; // 60 seconds pause
+    const BATCH_DELAY = 1000;
+    const RATE_LIMIT_PAUSE = 60;
+
+    // Field Definitions for Batch Selector
+    const BATCH_FIELDS = [
+        { id: 'username', labelKey: 'col_username' },
+        { id: 'name', labelKey: 'col_name' },
+        { id: 'numeric_id', labelKey: 'col_numeric_id' },
+        { id: 'location', labelKey: 'col_location' },
+        { id: 'device', labelKey: 'col_device' },
+        { id: 'created', labelKey: 'col_created' },
+        { id: 'id_changes', labelKey: 'col_id_changes' },
+        { id: 'last_change', labelKey: 'col_last_change' },
+        { id: 'deleted', labelKey: 'col_deleted' },
+        { id: 'loc_status', labelKey: 'col_location_status' },
+        { id: 'gender', labelKey: 'col_gender' },
+        { id: 'avatar', labelKey: 'col_avatar' },
+        { id: 'lang', labelKey: 'col_lang' },
+        { id: 'verified', labelKey: 'col_verified' }
+    ];
 
     let batchOverlayEl = null;
 
@@ -220,6 +250,8 @@
         total: 0,
         okCount: 0,
         errCount: 0,
+        // Default all fields to true initially
+        enabledFields: new Set(BATCH_FIELDS.map(f => f.id))
     };
 
     function saveDB() {
@@ -268,41 +300,21 @@
         .xf-mini-pill.xf-loaded { background: transparent; border: none; padding: 0 4px; font-weight: bold; }
         @keyframes xf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-        /* Native Menu Item (Desktop) */
         .xf-menu-item { display: flex; align-items: center; padding: 12px; cursor: pointer; transition: 0.2s; border-radius: 99px; margin: 4px 0; }
         .xf-menu-item:hover { background: rgba(239, 243, 244, 0.1); }
         .xf-menu-icon { width: 26px; height: 26px; margin-right: 20px; fill: currentColor; }
         .xf-menu-text { font-size: 20px; font-weight: 700; font-family: ${FONT_STACK}; color: var(--xf-text); line-height: 24px; }
 
-        /* Mobile Floating Button (Bottom Left) */
-        #xf-mob-fab {
-            position: fixed; bottom: 75px; left: 20px;
-            width: 48px; height: 48px;
-            background: var(--xf-blue); border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            box-shadow: 0 4px 12px rgba(29,155,240,0.4);
-            cursor: pointer; z-index: 9000; transition: 0.2s;
-            border: 2px solid #000;
-        }
+        #xf-mob-fab { position: fixed; bottom: 75px; left: 20px; width: 48px; height: 48px; background: var(--xf-blue); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(29,155,240,0.4); cursor: pointer; z-index: 9000; transition: 0.2s; border: 2px solid #000; }
         #xf-mob-fab:hover { transform: scale(1.1); }
         .xf-mob-icon { width: 24px; height: 24px; fill: #fff; }
 
-        /* Dashboard & Batch Modal */
         #xf-dash-overlay, #xf-batch-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 10001; display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px); direction: ${IS_RTL?'rtl':'ltr'}; }
-        #xf-dash-box, #xf-batch-box {
-            width: 95%; max-width: 400px; max-height: 80vh;
-            background: #000; border: 1px solid var(--xf-border); border-radius: 16px; padding: 16px;
-            font-family: ${FONT_STACK}; box-shadow: 0 20px 50px rgba(0,0,0,0.8); color: #fff;
-            display: flex; flex-direction: column;
-        }
+        #xf-dash-box, #xf-batch-box { width: 95%; max-width: 400px; max-height: 80vh; background: #000; border: 1px solid var(--xf-border); border-radius: 16px; padding: 16px; font-family: ${FONT_STACK}; box-shadow: 0 20px 50px rgba(0,0,0,0.8); color: #fff; display: flex; flex-direction: column; }
         .xf-dash-title { font-size: 18px; font-weight: 800; margin-bottom: 10px; border-bottom: 1px solid var(--xf-border); padding-bottom: 8px; display:flex; justify-content:space-between; align-items:center; }
-
-        /* Buttons Grid */
         .xf-btn-row { display: flex; gap: 8px; margin-top: 8px; }
         .xf-input { width: 100%; padding: 8px; margin-bottom: 8px; background: #16181c; border: 1px solid var(--xf-border); color: #fff; border-radius: 8px; outline: none; box-sizing: border-box; font-family: ${FONT_STACK}; }
         .xf-dash-btn { flex: 1; padding: 10px; border-radius: 99px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; font-family: ${FONT_STACK}; font-size: 12px; white-space: nowrap; }
-
-        /* Colors */
         .xf-btn-blue { background: var(--xf-blue); color: #fff; }
         .xf-btn-green { background: var(--xf-green); color: #fff; }
         .xf-btn-purple { background: var(--xf-purple); color: #fff; }
@@ -310,12 +322,7 @@
         .xf-btn-red { background: rgba(249, 24, 128, 0.2); color: var(--xf-red); border: 1px solid var(--xf-red); }
         .xf-btn-red:hover { background: var(--xf-red); color: #fff; }
 
-        /* User List Scroll Fix */
-        #xf-user-list {
-            flex: 1; overflow-y: auto; margin: 8px 0;
-            border: 1px solid var(--xf-border); border-radius: 8px; padding: 5px;
-            background: rgba(255,255,255,0.03); min-height: 100px;
-        }
+        #xf-user-list { flex: 1; overflow-y: auto; margin: 8px 0; border: 1px solid var(--xf-border); border-radius: 8px; padding: 5px; background: rgba(255,255,255,0.03); min-height: 100px; }
         .xf-user-row { display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid var(--xf-border); cursor: pointer; font-size: 12px; }
         .xf-user-row:hover { background: rgba(255,255,255,0.1); }
         .xf-user-row.xf-blocked { opacity: 0.5; background: rgba(100,0,0,0.1); }
@@ -325,7 +332,6 @@
         .xf-pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; font-size: 11px; color: var(--xf-dim); border-top: 1px solid var(--xf-border); padding-top: 5px; }
         .xf-page-btn { cursor: pointer; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.1); user-select: none; }
 
-        /* Card */
         #xf-card { position: fixed; z-index: 10000; width: 320px; background: var(--xf-bg); backdrop-filter: blur(12px); border: 1px solid var(--xf-border); border-radius: 16px; padding: 16px; color: var(--xf-text); font-family: ${FONT_STACK}; box-shadow: 0 15px 40px rgba(0,0,0,0.7); opacity: 0; transform: translateY(10px); transition: 0.2s; pointer-events: none; direction: ${IS_RTL?'rtl':'ltr'}; text-align: ${IS_RTL?'right':'left'}; }
         #xf-card.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
         .xf-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--xf-border); padding-bottom: 10px; margin-bottom: 10px; }
@@ -343,24 +349,24 @@
         .xf-mono { font-family: monospace; background: rgba(255,255,255,0.1); padding: 1px 4px; border-radius: 4px; }
         .xf-ftr { margin-top: 15px; text-align: center; }
         .xf-btn { display: block; padding: 8px; background: rgba(29,155,240,0.15); color: var(--xf-blue); border-radius: 8px; font-weight: bold; font-size: 12px; text-decoration: none; font-family: ${FONT_STACK}; }
-
-        /* Language Switcher */
         .xf-lang-section { margin-top:10px; font-size:11px; color:var(--xf-dim); display:flex; gap:5px; align-items:center; }
         .xf-lang-opt { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: 0.2s; }
         .xf-lang-opt:hover { background: rgba(255,255,255,0.1); color: #fff; }
         .xf-lang-active { background: rgba(29,155,240,0.2); color: var(--xf-blue); font-weight: bold; }
-
         #xf-mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 99999; display: none; align-items: flex-end; justify-content: center; backdrop-filter: blur(5px); direction: ${IS_RTL?'rtl':'ltr'}; }
         #xf-mob-sheet { width: 100%; max-width: 450px; background: #000; border-top: 1px solid var(--xf-border); border-radius: 20px 20px 0 0; padding: 20px; animation: xf-up 0.3s; font-family: ${FONT_STACK}; }
         @keyframes xf-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .xf-close { margin-top: 15px; padding: 12px; background: #eff3f4; color: #000; text-align: center; border-radius: 99px; font-weight: 700; font-size: 14px; cursor: pointer; user-select: none; }
-
-        /* Notes & OSINT */
         .xf-textarea { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--xf-border); color: #fff; border-radius: 8px; padding: 8px; margin-top: 12px; font-family: ${FONT_STACK}; font-size: 12px; resize: vertical; min-height: 50px; box-sizing: border-box; outline: none; }
         .xf-textarea:focus { border-color: var(--xf-blue); }
         .xf-osint-row { display: flex; gap: 10px; margin-top: 12px; justify-content: center; }
         .xf-osint-icon { font-size: 16px; cursor: pointer; opacity: 0.7; transition: 0.2s; text-decoration: none; }
         .xf-osint-icon:hover { opacity: 1; transform: scale(1.1); }
+
+        /* Batch Checkboxes */
+        .xf-batch-options { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 10px 0; max-height: 100px; overflow-y: auto; background: rgba(255,255,255,0.05); padding: 5px; border-radius: 8px; }
+        .xf-batch-opt { display: flex; align-items: center; font-size: 11px; color: var(--xf-dim); cursor: pointer; }
+        .xf-batch-opt input { margin-right: 5px; cursor: pointer; accent-color: var(--xf-blue); }
     `;
 
     const styleEl = document.createElement("style");
@@ -465,55 +471,52 @@
         }
     }
 
-    /**
-     * Maps the raw GraphQL response data to the required 10-column structured output.
-     */
     function mapRawDataToBatchOutput(res) {
+        const output = {};
         const isDeleted = res.is_deleted === true;
 
+        // --- Helper to check if field is enabled ---
+        const isFieldEnabled = (id) => batchState.enabledFields.has(id);
+
         if (isDeleted) {
-            return {
-                [TEXT.batch.col_username]: res.core.screen_name,
-                [TEXT.batch.col_name]: 'SUSPENDED/DELETED',
-                [TEXT.batch.col_id_changes]: 0,
-                [TEXT.batch.col_last_change]: 'N/A',
-                [TEXT.batch.col_created]: 'N/A',
-                [TEXT.batch.col_deleted]: 0, // 0 means deleted/suspended
-                [TEXT.batch.col_device]: 2,
-                [TEXT.batch.col_location_status]: 0,
-                [TEXT.batch.col_gender]: 2,
-                [TEXT.batch.col_numeric_id]: 'N/A'
-            };
+            // Handle Deleted/Suspended User
+            if(isFieldEnabled('username')) output[TEXT.batch.col_username] = res.core.screen_name;
+            if(isFieldEnabled('name')) output[TEXT.batch.col_name] = 'SUSPENDED/DELETED';
+            if(isFieldEnabled('id_changes')) output[TEXT.batch.col_id_changes] = 0;
+            if(isFieldEnabled('last_change')) output[TEXT.batch.col_last_change] = 'N/A';
+            if(isFieldEnabled('created')) output[TEXT.batch.col_created] = 'N/A';
+            if(isFieldEnabled('deleted')) output[TEXT.batch.col_deleted] = 0;
+            if(isFieldEnabled('device')) output[TEXT.batch.col_device] = 2;
+            if(isFieldEnabled('loc_status')) output[TEXT.batch.col_location_status] = 0;
+            if(isFieldEnabled('gender')) output[TEXT.batch.col_gender] = 2;
+            if(isFieldEnabled('numeric_id')) output[TEXT.batch.col_numeric_id] = 'N/A';
+            if(isFieldEnabled('location')) output[TEXT.batch.col_location] = 'N/A';
+            if(isFieldEnabled('avatar')) output[TEXT.batch.col_avatar] = 'N/A';
+            if(isFieldEnabled('lang')) output[TEXT.batch.col_lang] = 'other';
+            if(isFieldEnabled('verified')) output[TEXT.batch.col_verified] = 0;
+            return output;
         }
 
         const core = res.core || res.legacy || {};
         const about = res.about_profile || res.aboutProfile || {};
+        const verif = res.verification_info || {};
 
-        // 1. Username
+        // --- Calculate Values ---
         const username = core.screen_name || 'N/A';
-        // 2. Name
         const name = core.name || 'N/A';
-        // 10. Numeric ID
         const rest_id = res.rest_id || 'N/A';
-
-        // 3. Username Change Count
         const renameCount = parseInt(about.username_changes?.count || 0);
 
-        // 4. Last Changed At (msec) -> Convert to Gregorian Date string (UTC)
         const lastChangedMsec = about.username_changes?.last_changed_at_msec;
         let lastChangedDate = 'N/A';
         if (lastChangedMsec) {
             lastChangedDate = new Date(parseInt(lastChangedMsec)).toUTCString();
         }
 
-        // 5. Created At (Gregorian Date string - UTC)
         const createdAt = core.created_at;
         const createdDate = createdAt ? new Date(createdAt).toUTCString() : 'N/A';
-
-        // 6. Account Status (1: Active/Exists)
         const accountStatus = 1;
 
-        // 7. Device Type (0=Android, 1=iPhone, 2=Web/Other)
         const sourceRaw = about.source || TEXT.values.unknown;
         let deviceType = 2; // Default Web/Other
         const match = sourceRaw.match(SOURCE_REGEX);
@@ -523,39 +526,44 @@
             else if (type.includes("play") || type.includes("android")) deviceType = 0;
         }
 
-        // 8. Location Status (0=None, 1=Accurate/i, 2=VPN/Proxy)
         let locationStatus = 0;
         if (about.account_based_in) {
-            if (about.location_accurate === true) {
-                locationStatus = 1; // Accurate (i)
-            } else {
-                locationStatus = 2; // Inaccurate (VPN/Proxy)
-            }
+            if (about.location_accurate === true) locationStatus = 1;
+            else locationStatus = 2;
         }
 
-        // 9. Gender (0=Male, 1=Female, 2=Unknown)
-        const gender = 2;
+        const rawCountry = about.account_based_in;
+        const countryDisplay = getCountryDisplay(rawCountry);
+        const avatarUrl = (res.avatar?.image_url || "").replace("_normal", "_400x400");
+        const isVerified = verif.is_identity_verified === true ? 1 : 0;
 
+        const bio = core.description || "";
+        const isPersianSpeaker = ARABIC_SCRIPT_REGEX.test(name) || ARABIC_SCRIPT_REGEX.test(bio);
+        const langCode = isPersianSpeaker ? 'fa' : 'other';
 
-        return {
-            [TEXT.batch.col_username]: username,
-            [TEXT.batch.col_name]: name,
-            [TEXT.batch.col_id_changes]: renameCount,
-            [TEXT.batch.col_last_change]: lastChangedDate,
-            [TEXT.batch.col_created]: createdDate,
-            [TEXT.batch.col_deleted]: accountStatus,
-            [TEXT.batch.col_device]: deviceType,
-            [TEXT.batch.col_location_status]: locationStatus,
-            [TEXT.batch.col_gender]: gender,
-            [TEXT.batch.col_numeric_id]: rest_id
-        };
+        // --- Construct Output based on Selection ---
+        if(isFieldEnabled('username')) output[TEXT.batch.col_username] = username;
+        if(isFieldEnabled('name')) output[TEXT.batch.col_name] = name;
+        if(isFieldEnabled('id_changes')) output[TEXT.batch.col_id_changes] = renameCount;
+        if(isFieldEnabled('last_change')) output[TEXT.batch.col_last_change] = lastChangedDate;
+        if(isFieldEnabled('created')) output[TEXT.batch.col_created] = createdDate;
+        if(isFieldEnabled('deleted')) output[TEXT.batch.col_deleted] = accountStatus;
+        if(isFieldEnabled('device')) output[TEXT.batch.col_device] = deviceType;
+        if(isFieldEnabled('loc_status')) output[TEXT.batch.col_location_status] = locationStatus;
+        if(isFieldEnabled('gender')) output[TEXT.batch.col_gender] = 2;
+        if(isFieldEnabled('numeric_id')) output[TEXT.batch.col_numeric_id] = rest_id;
+        if(isFieldEnabled('location')) output[TEXT.batch.col_location] = countryDisplay;
+        if(isFieldEnabled('avatar')) output[TEXT.batch.col_avatar] = avatarUrl;
+        if(isFieldEnabled('lang')) output[TEXT.batch.col_lang] = langCode;
+        if(isFieldEnabled('verified')) output[TEXT.batch.col_verified] = isVerified;
+
+        return output;
     }
 
     async function handleRateLimit() {
         batchState.isPaused = true;
         batchState.currentWaitTime = RATE_LIMIT_PAUSE;
 
-        // Show rate limit message in results list
         const resultsListEl = document.getElementById('xf-batch-results-list');
         if (resultsListEl) resultsListEl.innerHTML += `<div style="color:var(--xf-orange); font-weight: bold;">--- ${TEXT.batch.rate_limit_msg} ---</div>`;
 
@@ -571,7 +579,6 @@
 
         if (!batchState.isAborted) {
             batchState.isPaused = false;
-            // Resume processing immediately after pause
             if (resultsListEl) resultsListEl.innerHTML += `<div style="color:var(--xf-green);">--- Resuming Processing ---</div>`;
             processBatchStep();
         } else {
@@ -587,7 +594,6 @@
             const index = batchState.index;
             const resultsListEl = document.getElementById('xf-batch-results-list');
 
-            // Skip if already paused by rate limit
             if (batchState.isPaused) return;
 
             let result = null;
@@ -604,11 +610,10 @@
                     }
                 });
 
-                // Check for rate limiting status (429)
                 if (response.status === 429) {
                     batchState.isRunning = true;
                     await handleRateLimit();
-                    return; // Exit loop, waiting for pause completion
+                    return;
                 }
 
                 const json = await response.json();
@@ -617,17 +622,16 @@
                      const error = json.errors[0].message;
                      let displayName = 'ERROR';
 
-                     // Common errors indicating deletion or suspension
                      if (error.includes("Not found") || error.includes("Suspended") || error.includes("Could not find user")) {
                          result = mapRawDataToBatchOutput({
                              core: { screen_name: username, name: 'N/A' },
                              rest_id: 'N/A',
                              about_profile: {},
-                             is_deleted: true // Flag indicating deleted/suspended
+                             is_deleted: true
                          });
                          displayName = 'Suspended';
                          statusChar = '🚫';
-                         batchState.okCount++; // Count as handled success
+                         batchState.okCount++;
                      } else {
                          throw new Error(`API Error: ${error}`);
                      }
@@ -645,8 +649,10 @@
                     batchState.okCount++;
                     statusChar = '✅';
 
+                    // Display result with name if selected, otherwise just username
+                    const displayLabel = result[TEXT.batch.col_name] || username;
                     if (resultsListEl) {
-                         resultsListEl.innerHTML += `<div>[${index + 1}/${batchState.total}] ${statusChar} @${username} (${result[TEXT.batch.col_name]})</div>`;
+                         resultsListEl.innerHTML += `<div>[${index + 1}/${batchState.total}] ${statusChar} @${username} (${displayLabel})</div>`;
                     }
                 }
 
@@ -655,33 +661,23 @@
             } catch (e) {
                 console.error(`Error fetching @${username}:`, e);
                 batchState.errCount++;
-                // Push an error record
-                batchState.results.push({
-                    [TEXT.batch.col_username]: username,
-                    [TEXT.batch.col_name]: 'API ERROR',
-                    [TEXT.batch.col_id_changes]: 'N/A',
-                    [TEXT.batch.col_last_change]: 'N/A',
-                    [TEXT.batch.col_created]: 'N/A',
-                    [TEXT.batch.col_deleted]: 0,
-                    [TEXT.batch.col_device]: 2,
-                    [TEXT.batch.col_location_status]: 0,
-                    [TEXT.batch.col_gender]: 2,
-                    [TEXT.batch.col_numeric_id]: 'N/A'
-                });
+                // Create minimal error object based on selected fields
+                const errorObj = {};
+                if(batchState.enabledFields.has('username')) errorObj[TEXT.batch.col_username] = username;
+                if(batchState.enabledFields.has('name')) errorObj[TEXT.batch.col_name] = 'API ERROR';
+
+                batchState.results.push(errorObj);
+
                 if (resultsListEl) {
                     resultsListEl.innerHTML += `<div style="color:var(--xf-red);">[${index + 1}/${batchState.total}] ❌ @${username} (API Error)</div>`;
                 }
             }
 
-            // Update UI
             batchState.index++;
             updateBatchUI();
-
-            // Wait for 1 second delay
             await new Promise(r => setTimeout(r, BATCH_DELAY));
         }
 
-        // Final state check
         if (batchState.index === batchState.total || batchState.isAborted) {
             batchState.isRunning = false;
         }
@@ -700,7 +696,6 @@
 
         if (rawList.length === 0) return;
 
-        // Reset state for a new run
         batchState.list = rawList;
         batchState.total = rawList.length;
         batchState.index = 0;
@@ -711,12 +706,9 @@
         batchState.isPaused = false;
         batchState.results = [];
 
-        // Clear list display
         document.getElementById('xf-batch-results-list').innerHTML = '';
 
         updateBatchUI();
-
-        // Start async processing
         processBatchStep();
     }
 
@@ -731,21 +723,30 @@
     }
 
     function showBatchModal() {
-        // Hide dashboard first
         document.getElementById("xf-dash-overlay").style.display = "none";
 
         batchOverlayEl.innerHTML = `
             <div id="xf-batch-box" class="xf-dash-box" style="max-width: 500px; max-height: 90vh;">
                 <div class="xf-dash-title">${TEXT.batch.title}</div>
 
-                <textarea id="xf-batch-input" class="xf-textarea" style="height: 150px; margin-top: 0; direction: ltr;" placeholder="${TEXT.batch.input_placeholder}"></textarea>
+                <div style="font-size:12px; font-weight:bold; margin-top:5px;">${TEXT.batch.fields_label}</div>
+                <div class="xf-batch-options">
+                    ${BATCH_FIELDS.map(field => `
+                        <label class="xf-batch-opt">
+                            <input type="checkbox" data-id="${field.id}" ${batchState.enabledFields.has(field.id) ? 'checked' : ''}>
+                            ${TEXT.batch[field.labelKey]}
+                        </label>
+                    `).join('')}
+                </div>
 
-                <div style="margin: 10px 0; font-size: 13px; font-weight: bold; display: flex; justify-content: space-between;">
+                <textarea id="xf-batch-input" class="xf-textarea" style="height: 100px; margin-top: 5px; direction: ltr;" placeholder="${TEXT.batch.input_placeholder}"></textarea>
+
+                <div style="margin: 5px 0; font-size: 13px; font-weight: bold; display: flex; justify-content: space-between;">
                     <span id="xf-batch-status" style="color: var(--xf-green);">${TEXT.batch.status_idle}</span>
                     <span id="xf-batch-rate-status" style="color: var(--xf-orange); font-size: 11px;"></span>
                 </div>
 
-                <div id="xf-batch-progress" style="font-size: 11px; color: var(--xf-dim); margin-bottom: 10px; direction: ltr;">
+                <div id="xf-batch-progress" style="font-size: 11px; color: var(--xf-dim); margin-bottom: 5px; direction: ltr;">
                     ${TEXT.batch.progress.replace('{c}', 0).replace('{t}', 0).replace('{ok}', 0).replace('{err}', 0)}
                 </div>
 
@@ -758,7 +759,7 @@
                     <button id="xf-batch-close" class="xf-dash-btn xf-btn-red" style="background:transparent;border:1px solid var(--xf-dim);color:var(--xf-dim); flex: 1.5;">${TEXT.btn.close}</button>
                 </div>
 
-                <h3 style="font-size: 14px; margin-top: 15px; border-bottom: 1px solid var(--xf-border); padding-bottom: 5px;">Results (${TEXT.batch.col_username})</h3>
+                <h3 style="font-size: 14px; margin-top: 10px; border-bottom: 1px solid var(--xf-border); padding-bottom: 5px;">Results</h3>
                 <div id="xf-batch-results-list" style="flex: 1; overflow-y: auto; background: #16181c; border-radius: 8px; padding: 5px; font-size: 12px; font-family: monospace; color: var(--xf-text); direction: ltr;">
                     <!-- Results go here -->
                 </div>
@@ -766,6 +767,16 @@
         `;
 
         batchOverlayEl.style.display = "flex";
+
+        // Bind Checkbox Events
+        const checks = batchOverlayEl.querySelectorAll('.xf-batch-options input[type="checkbox"]');
+        checks.forEach(chk => {
+            chk.onchange = (e) => {
+                const id = e.target.getAttribute('data-id');
+                if (e.target.checked) batchState.enabledFields.add(id);
+                else batchState.enabledFields.delete(id);
+            };
+        });
 
         document.getElementById('xf-batch-start').onclick = startBatchProcessing;
         document.getElementById('xf-batch-export').onclick = exportBatchJson;
@@ -781,26 +792,23 @@
             updateBatchUI(true);
         };
 
-        // Populate input area if list exists from a previous run
         if (batchState.list.length > 0 && batchState.index < batchState.total) {
-            inputArea.value = batchState.list.slice(batchState.index).join('\n');
+            document.getElementById('xf-batch-input').value = batchState.list.slice(batchState.index).join('\n');
         } else if (batchState.list.length > 0) {
-            // If finished, show the entire list
-            inputArea.value = batchState.list.join('\n');
+            document.getElementById('xf-batch-input').value = batchState.list.join('\n');
         }
 
-        // Re-render results log if available
         const resultsListEl = document.getElementById('xf-batch-results-list');
         if (resultsListEl) {
              batchState.results.forEach(result => {
-                 const username = result[TEXT.batch.col_username];
-                 const name = result[TEXT.batch.col_name];
+                 const username = result[TEXT.batch.col_username] || "???";
+                 const name = result[TEXT.batch.col_name] || "???";
                  const statusChar = (name === 'ERROR' || name === 'API ERROR' || name === 'SUSPENDED/DELETED') ? '❌' : '✅';
                  resultsListEl.innerHTML += `<div>${statusChar} @${username} (${name})</div>`;
              });
         }
 
-        updateBatchUI(); // Initialize UI state
+        updateBatchUI();
     }
 
 
@@ -809,14 +817,13 @@
         if (document.getElementById('xf-menu-btn') || document.getElementById('xf-mob-fab')) return;
 
         if (!IS_MOBILE) {
-            // Desktop Sidebar
             const nav = document.querySelector('nav[aria-label="Primary"]');
             if (!nav) return;
 
             const item = document.createElement('a');
             item.id = "xf-menu-btn";
             item.className = "xf-menu-item";
-            item.href = "#"; // Prevent navigation
+            item.href = "#";
             item.setAttribute("role", "link");
             item.innerHTML = `
                 <div style="display:flex;align-items:center;">
@@ -831,7 +838,6 @@
             else nav.appendChild(item);
 
         } else {
-            // Mobile FAB (Bottom-Left)
             const fab = document.createElement('div');
             fab.id = "xf-mob-fab";
             fab.innerHTML = `<svg viewBox="0 0 24 24" class="xf-mob-icon" style="fill:#fff"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"></path></svg>`;
@@ -980,7 +986,7 @@
         document.getElementById("xf-btn-csv").onclick = exportCSV;
         document.getElementById("xf-btn-clear").onclick = clearCache;
         document.getElementById("xf-btn-block").onclick = handleMassBlock;
-        document.getElementById("xf-btn-batch").onclick = showBatchModal; // New binding
+        document.getElementById("xf-btn-batch").onclick = showBatchModal;
         document.getElementById("xf-dash-close-btn").onclick = () => { overlay.style.display = "none"; };
 
         document.getElementById('xf-dash-l-auto').onclick = () => setLang('auto');
@@ -990,16 +996,13 @@
         renderUserList(db);
     }
 
-    // --- MASS BLOCK ---
     async function handleMassBlock() {
-        // If already blocking, stop it
         if (isBlockingProcess) {
             abortBlock = true;
             return;
         }
 
         const rawList = getFilteredUsers();
-        // Filter out users who are ALREADY blocked to avoid redundant API calls
         const usersToBlock = rawList.filter(u => !db[u].data.isBlocked);
 
         if(usersToBlock.length === 0) return alert(TEXT.dashboard.msg_no_targets);
@@ -1027,15 +1030,13 @@
 
             try {
                 await performBlock(userId);
-                // Mark as blocked in DB immediately so it persists even if we stop
                 db[username].data.isBlocked = true;
                 saveDB();
-                renderUserList(db); // Update UI to show blocked status
+                renderUserList(db);
                 successCount++;
             } catch (e) {
                 console.error("Block failed for", username, e);
             }
-            // Delay to prevent rate limiting (1.2 seconds)
             await new Promise(r => setTimeout(r, 1200));
         }
 
@@ -1066,7 +1067,6 @@
         });
     }
 
-    // --- CLOUD UPDATE ---
     function loadFromCloud() {
         GM_xmlhttpRequest({
             method: "GET", url: CLOUD_DB_URL,
@@ -1085,12 +1085,10 @@
         });
     }
 
-    // --- CONTRIBUTION LOGIC ---
     function contributeData() {
         const count = Object.keys(db).length;
         if (count === 0) return alert("No data to contribute.");
 
-        // USE CLEAN DB (Privacy)
         const cleanDB = getCleanDB();
         const blob = new Blob([JSON.stringify(cleanDB, null, 2)], { type: "application/json" });
 
@@ -1102,7 +1100,6 @@
     }
 
     function backupJSON() {
-        // USE CLEAN DB (Privacy)
         const cleanDB = getCleanDB();
         const blob = new Blob([JSON.stringify(cleanDB, null, 2)], { type: "application/json" });
 
@@ -1117,10 +1114,90 @@
         reader.onload = (event) => {
             try {
                 const imported = JSON.parse(event.target.result);
-                db = { ...db, ...imported }; saveDB();
-                alert(TEXT.dashboard.msg_restored.replace("{n}", Object.keys(imported).length));
+                let addedCount = 0;
+
+                if (Array.isArray(imported)) {
+                    imported.forEach(item => {
+                        const uKey = Object.keys(item).find(k => k === "Username" || k === "نام کاربری");
+                        if (!uKey) return;
+                        const username = item[uKey];
+                        if (!username) return;
+
+                        const idKey = Object.keys(item).find(k => k === "Numeric ID" || k === "آی‌دی عددی");
+                        const locKey = Object.keys(item).find(k => k === "Location" || k === "موقعیت");
+                        const devKey = Object.keys(item).find(k => k.includes("Device") || k.includes("دستگاه"));
+                        const createdKey = Object.keys(item).find(k => k.includes("Created") || k.includes("ساخت"));
+                        const renamedKey = Object.keys(item).find(k => k.includes("Change Count") || k.includes("تعداد تغییر"));
+                        const avatarKey = Object.keys(item).find(k => k.includes("Avatar") || k.includes("آواتار"));
+                        const accStatusKey = Object.keys(item).find(k => k.includes("Account Status") || k.includes("وضعیت اکانت"));
+                        const locStatusKey = Object.keys(item).find(k => k.includes("Location Status") || k.includes("وضعیت مکان"));
+                        const langKey = Object.keys(item).find(k => k.includes("Language") || k.includes("زبان"));
+                        const verKey = Object.keys(item).find(k => k.includes("Verified") || k.includes("تیک"));
+
+                        if (item[accStatusKey] === 0) return;
+
+                        let devStr = "Unknown";
+                        if (item[devKey] === 0) devStr = "Android";
+                        else if (item[devKey] === 1) devStr = "iPhone";
+                        else devStr = "Web/Other";
+
+                        const rawUtc = item[createdKey] || "";
+                        const formattedCreated = rawUtc !== "N/A" ? formatTime(new Date(rawUtc)) : "N/A";
+                        const isVerified = item[verKey] === 1;
+                        const langCode = (item[langKey] === 'fa') ? 'fa' : null;
+
+                        const data = {
+                            country: item[locKey] || "Unknown",
+                            countryCode: item[locKey],
+                            device: devStr,
+                            deviceFull: devStr,
+                            id: item[idKey] || "",
+                            created: formattedCreated,
+                            renamed: parseInt(item[renamedKey] || 0),
+                            isAccurate: item[locStatusKey] === 1,
+                            isIdVerified: isVerified,
+                            langCode: langCode,
+                            avatar: item[avatarKey] || "",
+                            isBlocked: false
+                        };
+
+                        let pillText = `📍 ${data.country}`;
+                        if (data.country === "Unknown" || data.country === "نامشخص") {
+                             pillText = `📱 ${data.device}`;
+                        }
+
+                        let color = "var(--xf-green)";
+                        const isTargetLoc = (data.countryCode === "Iran" || data.countryCode === "West Asia" || data.countryCode === "غرب آسیا");
+                        const isTargetDev = (data.deviceFull.includes("Android") || data.deviceFull.includes("iPhone")); // Generic logic for safe apps
+
+                        if (!data.isAccurate) {
+                            color = "var(--xf-red)";
+                        } else if (isTargetLoc && data.isAccurate) {
+                            color = "var(--xf-orange)";
+                        }
+
+                        db[username] = {
+                            data: data,
+                            pillText: pillText,
+                            color: color,
+                            html: renderCardHTML(data, username)
+                        };
+                        addedCount++;
+                    });
+
+                    saveDB();
+                    alert(TEXT.dashboard.msg_imported_batch.replace("{n}", addedCount));
+
+                } else {
+                    db = { ...db, ...imported };
+                    saveDB();
+                    alert(TEXT.dashboard.msg_restored.replace("{n}", Object.keys(imported).length));
+                }
                 showDashboard();
-            } catch (err) { alert(TEXT.dashboard.msg_err); }
+            } catch (err) {
+                console.error(err);
+                alert(TEXT.dashboard.msg_err);
+            }
         };
         reader.readAsText(file); e.target.value = "";
     }
@@ -1189,8 +1266,8 @@
 
     function renderCardHTML(data, username) {
         let color = "var(--xf-green)", label = TEXT.risk.safe, pct = "5%", title = TEXT.status.high_conf, desc = TEXT.status.high_desc, bg = "rgba(0, 186, 124, 0.1)";
-        const isTargetLoc = (data.countryCode === "Iran" || data.countryCode === "West Asia");
-        const isTargetDev = (data.deviceFull || "").match(/Iran|West Asia/i);
+        const isTargetLoc = (data.countryCode === "Iran" || data.countryCode === "West Asia" || data.countryCode === "غرب آسیا");
+        const isTargetDev = (data.deviceFull || "").match(/Iran|West Asia|غرب آسیا/i);
         const isFarsi = data.langCode === 'fa';
 
         if (!data.isAccurate) {
@@ -1314,8 +1391,6 @@
             const name = core.name || ""; const bio = core.description || "";
             const isPersianSpeaker = ARABIC_SCRIPT_REGEX.test(name) || ARABIC_SCRIPT_REGEX.test(bio);
 
-            // Check if user is ALREADY blocked via API (res.legacy.blocking)
-            // Combine with DB memory
             const apiBlocked = res.legacy?.blocking === true;
             const existingBlocked = db[user]?.data?.isBlocked || false;
             const finalBlockedState = apiBlocked || existingBlocked;
@@ -1385,7 +1460,6 @@
         });
     }
 
-    // POLLING & INIT
     setInterval(() => {
         injectLists();
         injectNativeMenu();
