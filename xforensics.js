@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         X Profile Forensics (v18.3)
+// @name         X Profile Forensics (v19.0.0)
 // @namespace    http://tampermonkey.net/
-// @version      18.3.0
+// @version      19.0.0
 // @description  Forensics tool. Added: Auto-detection of pre-blocked users & Privacy mode for Exports (excludes block status).
 // @author       https://x.com/yebekhe
 // @match        https://x.com/*
@@ -22,7 +22,7 @@
 
     const TRANSLATIONS = {
         en: {
-            title: "Forensics v18.3",
+            title: "Forensics v19.0",
             menu_btn: "Forensics",
             labels: { location: "Location", device: "Device", id: "Perm ID", created: "Created", renamed: "Renamed", identity: "Identity", lang: "Language", type: "Type" },
             risk: { safe: "SAFE", detected: "DETECTED", anomaly: "ANOMALY", caution: "CAUTION", normal: "NORMAL", verified: "VERIFIED ID" },
@@ -105,7 +105,7 @@
             lang_sel: "Lang:"
         },
         fa: {
-            title: "تحلیلگر پروفایل ۱۸.۳",
+            title: "تحلیلگر پروفایل ۱۹.۰",
             menu_btn: "جرم‌شناسی",
             labels: { location: "موقعیت", device: "دستگاه", id: "شناسه", created: "ساخت", renamed: "تغییر نام", identity: "هویت", lang: "زبان", type: "نوع" },
             risk: { safe: "امن", detected: "هشدار", anomaly: "ناهنجاری", caution: "احتیاط", normal: "طبیعی", verified: "تایید شده" },
