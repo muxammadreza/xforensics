@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         X Profile Forensics (v20.3)
+// @name         X Profile Forensics (v20.5.0)
 // @namespace    http://tampermonkey.net/
-// @version      20.3.0
-// @description  Forensics tool. Scrapes live follower/following/post counts from profile page for accurate behavioral analysis.
+// @version      20.5.0
+// @description  Forensics tool. Dashboard redesigned, new features, and bug fixes.
 // @author       https://x.com/yebekhe
 // @match        https://x.com/*
 // @match        https://twitter.com/*
@@ -22,11 +22,13 @@
 
     const TRANSLATIONS = {
         en: {
-            title: "Forensics v20.3",
+            title: "Forensics v20.5",
             menu_btn: "Forensics",
             labels: { location: "Location", device: "Device", id: "Perm ID", created: "Created", renamed: "Renamed", identity: "Identity", lang: "Language", type: "Type" },
             risk: { safe: "SAFE", detected: "DETECTED", anomaly: "ANOMALY", caution: "CAUTION", normal: "NORMAL", verified: "VERIFIED ID" },
-            tags: { title: "Manual Tags", loc_change: "Location Changed", base_iran: "Suspect Base Iran", cyber: "Cyber/Organized", fake: "Fake/Bot" },
+            tags: { title: "Manual Tags", loc_change: "Location Changed", base_iran: "Suspect Base Iran", cyber: "Cyber/Organized", fake: "Fake/Bot", flag_ir: "🇮🇷 Iran Flag",
+                suspicious: "Suspicious Behavior",
+                foreigner: "Foreigner (Non-IR)" },
             status: {
                 high_conf: "High Confidence", high_desc: "Connection matches organic traffic patterns.",
                 shield: "Shield Active", shield_desc: "Traffic obfuscated via Proxy/VPN or flagged for relocation.",
@@ -63,12 +65,22 @@
                 btn_export: "💾 Export CSV", btn_backup: "💾 Backup JSON", btn_restore: "📥 Restore JSON",
                 btn_cloud: "☁️ Update from GitHub", btn_contrib: "📤 Contribute Data", btn_clear: "🗑️ Clear Cache",
                 btn_block: "🚫 Mass Block Listed", btn_stop: "🛑 STOP Process", btn_lookup: "🆔 ID Lookup",
+                btn_tags: "🏷️ Tag Filter",
                 count: "Users Stored: {n}", list_header: "User List (Click to Visit)", list_empty: "No users found matching filters.",
                 page_prev: "◀ Prev", page_next: "Next ▶", page_info: "Page {c} of {t}",
                 msg_cleared: "Database wiped successfully!", msg_restored: "Restored {n} users.", msg_imported_batch: "Imported {n} users from Batch file.",
                 msg_cloud_ok: "Success! Added {n} users from GitHub.", msg_cloud_fail: "Failed to fetch database.", msg_err: "Invalid file.",
                 msg_block_conf: "⚠️ WARNING ⚠️\n\nBlock {n} users?\nContinue?", msg_blocking: "Blocking {c}/{t}...", msg_block_done: "Done. Blocked {n} users.",
-                msg_block_stop: "Stopped.", msg_no_targets: "All users in this filter are already blocked!", contrib_info: "Clean file downloaded."
+                msg_block_stop: "Stopped.", msg_no_targets: "All users in this filter are already blocked!", contrib_info: "Clean file downloaded.",
+                nav_home: "Database",
+                nav_tools: "Tools",
+                nav_data: "Settings",
+                filter_tag: "Filter Tag",
+                btn_back: "← Back",      
+                tools_title: "Tools & Utilities",
+                batch_desc: "Process multiple users & auto-merge.",
+                tags_desc: "Visual tag cloud & stats.",
+                lookup_desc: "Find profile by numeric ID."
             },
             lookup: { title: "Find User by ID", desc: "Enter a Numeric ID.", input_ph: "Numeric ID...", btn_go: "Visit Profile", btn_back: "Back to DB" },
             batch: {
@@ -86,14 +98,28 @@
             values: { gov: "Government", unknown: "Unknown", west_asia: "West Asia", fa_script: "Farsi/Arabic" },
             notes_placeholder: "Add personal notes...",
             osint_titles: { archive: "Check Wayback Machine", google: "Google Dork", lens: "Reverse Image Search" },
-            lang_sel: "Lang:"
+            lang_sel: "Lang:",
+            data: {
+                cloud_title: "Cloud & Sync",
+                update_db: "Update DB",
+                update_desc: "Fetch latest forensics data from GitHub.",
+                contrib_title: "Contribute",
+                contrib_desc: "Share data (Anonymized).",
+                backup_title: "Backup & Maintenance",
+                backup_json: "Backup JSON",
+                restore_json: "Restore JSON",
+                clear_cache: "Clear Cache",
+                lang_label: "Language:"
+            }
         },
         fa: {
-            title: "تحلیلگر پروفایل ۲۰.۳",
+            title: "تحلیلگر پروفایل ۲۰.۵",
             menu_btn: "جرم‌شناسی",
             labels: { location: "موقعیت", device: "دستگاه", id: "شناسه", created: "ساخت", renamed: "تغییر نام", identity: "هویت", lang: "زبان", type: "نوع" },
             risk: { safe: "امن", detected: "هشدار", anomaly: "ناهنجاری", caution: "احتیاط", normal: "طبیعی", verified: "تایید شده" },
-            tags: { title: "دسته‌بندی / تگ‌ها", loc_change: "تغییر لوکیشن", base_iran: "مشکوک به Base Iran", cyber: "سایبری/سازمانی", fake: "فیک/جعلی" },
+            tags: { title: "دسته‌بندی / تگ‌ها", loc_change: "تغییر لوکیشن", base_iran: "مشکوک به Base Iran", cyber: "سایبری/سازمانی", fake: "فیک/جعلی", flag_ir: "🇮🇷 پرچم ایران",
+                suspicious: "رفتار مشکوک",
+                foreigner: "خارجی (غیر ایرانی)" },
             status: {
                 high_conf: "اطمینان بالا", high_desc: "اتصال طبیعی و ارگانیک است.",
                 shield: "سپر فعال", shield_desc: "استفاده از VPN/پروکسی تشخیص داده شد.",
@@ -130,12 +156,22 @@
                 btn_export: "💾 خروجی CSV", btn_backup: "💾 بک‌آپ JSON", btn_restore: "📥 بازگردانی",
                 btn_cloud: "☁️ آپدیت از گیت‌هاب", btn_contrib: "📤 ارسال دیتا (مشارکت)", btn_clear: "🗑️ حذف دیتا",
                 btn_block: "🚫 مسدودسازی لیست", btn_stop: "🛑 توقف عملیات", btn_lookup: "🆔 یابنده ID",
+                btn_tags: "🏷️ فیلتر تگ‌ها",
                 count: "ذخیره شده: {n}", list_header: "لیست کاربران (برای مشاهده کلیک کنید)", list_empty: "کاربری با این مشخصات یافت نشد.",
                 page_prev: "◀ قبلی", page_next: "بعدی ▶", page_info: "صفحه {c} از {t}",
                 msg_cleared: "پایگاه داده پاک شد!", msg_restored: "تعداد {n} کاربر بازیابی شد.", msg_imported_batch: "تعداد {n} کاربر از فایل Batch وارد شد.",
                 msg_cloud_ok: "موفق! {n} کاربر از گیت‌هاب اضافه شد.", msg_cloud_fail: "خطا در دریافت دیتابیس.", msg_err: "فایل نامعتبر است.",
                 msg_block_conf: "⚠️ هشدار ⚠️\n\nمسدودسازی {n} کاربر.\nادامه می‌دهید؟", msg_blocking: "مسدودسازی {c} از {t}...", msg_block_done: "پایان! {n} کاربر بلاک شدند.",
-                msg_block_stop: "توقف شد.", msg_no_targets: "کاربری برای بلاک یافت نشد.", contrib_info: "فایل contribution.json دانلود شد."
+                msg_block_stop: "توقف شد.", msg_no_targets: "کاربری برای بلاک یافت نشد.", contrib_info: "فایل contribution.json دانلود شد.",
+                nav_home: "پایگاه داده",
+                nav_tools: "ابزارها",
+                nav_data: "تنظیمات",
+                filter_tag: "فیلتر تگ",   
+                btn_back: "← بازگشت",     
+                tools_title: "ابزارها و امکانات",
+                batch_desc: "پردازش گروهی و ادغام خودکار.",
+                tags_desc: "آمار و ابر تگ‌ها.",
+                lookup_desc: "جستجو با شناسه عددی."
             },
             lookup: { title: "جستجو با شناسه عددی", desc: "شناسه عددی را وارد کنید.", input_ph: "شناسه عددی...", btn_go: "مشاهده پروفایل", btn_back: "بازگشت" },
             batch: {
@@ -153,7 +189,19 @@
             values: { gov: "دولتی", unknown: "نامشخص", west_asia: "غرب آسیا", fa_script: "فارسی/عربی" },
             notes_placeholder: "یادداشت شخصی بنویسید...",
             osint_titles: { archive: "آرشیو اینترنت", google: "جستجوی گوگل", lens: "جستجوی تصویر" },
-            lang_sel: "زبان:"
+            lang_sel: "زبان:",
+            data: {
+                cloud_title: "همگام‌سازی ابری",
+                update_db: "بروزرسانی دیتابیس",
+                update_desc: "دریافت آخرین داده‌ها از گیت‌هاب.",
+                contrib_title: "مشارکت",
+                contrib_desc: "ارسال داده‌ها (بدون نام).",
+                backup_title: "پشتیبانی و نگهداری",
+                backup_json: "بک‌آپ JSON",
+                restore_json: "بازگردانی JSON",
+                clear_cache: "حذف حافظه",
+                lang_label: "زبان رابط کاربری:"
+            }
         }
     };
 
@@ -205,7 +253,8 @@
         total: 0,
         okCount: 0,
         errCount: 0,
-        enabledFields: new Set(BATCH_FIELDS.map(f => f.id))
+        enabledFields: new Set(BATCH_FIELDS.map(f => f.id)),
+        config: { merge: true, skip: false }
     };
 
     function saveDB() {
@@ -244,9 +293,9 @@
     const FONT_STACK = 'TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
     const STYLES = `
-        :root { --xf-bg: rgba(0,0,0,0.95); --xf-border: rgba(255,255,255,0.15); --xf-blue: #1d9bf0; --xf-green: #00ba7c; --xf-red: #f91880; --xf-orange: #ffd400; --xf-purple: #794BC4; --xf-text: #e7e9ea; --xf-dim: #71767b; }
+        :root { --xf-bg: #000000; --xf-sidebar: #16181c; --xf-border: #2f3336; --xf-blue: #1d9bf0; --xf-green: #00ba7c; --xf-red: #f91880; --xf-orange: #ffd400; --xf-purple: #794BC4; --xf-text: #e7e9ea; --xf-dim: #71767b; }
 
-        /* --- GLOBAL --- */
+        /* --- GLOBAL INJECTIONS --- */
         #xf-pill { display: inline-flex; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid var(--xf-border); border-radius: 99px; padding: 4px 12px; margin-right: 12px; margin-bottom: 4px; cursor: pointer; font-family: ${FONT_STACK}; font-size: 13px; user-select: none; direction: ltr; }
         #xf-pill:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); }
         .xf-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; box-shadow: 0 0 6px currentColor; animation: xf-pulse 2s infinite; }
@@ -255,7 +304,7 @@
         .xf-mini-pill.xf-loaded { background: transparent; border: none; padding: 0 4px; font-weight: bold; }
         @keyframes xf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-        /* --- MENU --- */
+        /* --- NATIVE MENU ITEM --- */
         .xf-menu-item { display: flex; align-items: center; padding: 12px; cursor: pointer; transition: 0.2s; border-radius: 99px; margin: 4px 0; }
         .xf-menu-item:hover { background: rgba(239, 243, 244, 0.1); }
         .xf-menu-icon { width: 26px; height: 26px; margin-right: 20px; fill: currentColor; }
@@ -264,28 +313,70 @@
         #xf-mob-fab:hover { transform: scale(1.1); }
         .xf-mob-icon { width: 24px; height: 24px; fill: #fff; }
 
-        /* --- MODALS --- */
-        #xf-dash-overlay, #xf-batch-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 10001; display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px); direction: ${IS_RTL?'rtl':'ltr'}; }
-        #xf-dash-box, #xf-batch-box { width: 95%; max-width: 400px; max-height: 80vh; background: #000; border: 1px solid var(--xf-border); border-radius: 16px; padding: 16px; font-family: ${FONT_STACK}; box-shadow: 0 20px 50px rgba(0,0,0,0.8); color: #fff; display: flex; flex-direction: column; }
-        .xf-dash-title { font-size: 18px; font-weight: 800; margin-bottom: 10px; border-bottom: 1px solid var(--xf-border); padding-bottom: 8px; display:flex; justify-content:space-between; align-items:center; }
-        .xf-btn-row { display: flex; gap: 8px; margin-top: 8px; }
-        .xf-input { width: 100%; padding: 8px; margin-bottom: 8px; background: #16181c; border: 1px solid var(--xf-border); color: #fff; border-radius: 8px; outline: none; box-sizing: border-box; font-family: ${FONT_STACK}; }
-        .xf-dash-btn { flex: 1; padding: 10px; border-radius: 99px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; font-family: ${FONT_STACK}; font-size: 12px; white-space: nowrap; }
-        .xf-btn-blue { background: var(--xf-blue); color: #fff; }
-        .xf-btn-green { background: var(--xf-green); color: #fff; }
-        .xf-btn-purple { background: var(--xf-purple); color: #fff; }
-        .xf-btn-orange { background: var(--xf-orange); color: #000; }
-        .xf-btn-red { background: rgba(249, 24, 128, 0.2); color: var(--xf-red); border: 1px solid var(--xf-red); }
-        .xf-btn-red:hover { background: var(--xf-red); color: #fff; }
-        #xf-user-list { flex: 1; overflow-y: auto; margin: 8px 0; border: 1px solid var(--xf-border); border-radius: 8px; padding: 5px; background: rgba(255,255,255,0.03); min-height: 100px; }
-        .xf-user-row { display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid var(--xf-border); cursor: pointer; font-size: 12px; }
-        .xf-user-row:hover { background: rgba(255,255,255,0.1); }
+        /* --- DASHBOARD REDESIGN --- */
+        #xf-dash-overlay { position: fixed; inset: 0; background: rgba(91, 112, 131, 0.4); z-index: 10001; display: none; align-items: center; justify-content: center; backdrop-filter: blur(5px); direction: ${IS_RTL?'rtl':'ltr'}; }
+
+        #xf-dash-box {
+            width: 750px; height: 550px; max-width: 95vw; max-height: 90vh;
+            background: var(--xf-bg); border-radius: 16px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.5);
+            display: flex; overflow: hidden; border: 1px solid var(--xf-border);
+            font-family: ${FONT_STACK}; color: #fff;
+        }
+
+        /* SIDEBAR */
+        .xf-dash-sidebar { width: 60px; background: var(--xf-sidebar); display: flex; flex-direction: column; align-items: center; padding-top: 20px; border-${IS_RTL?'left':'right'}: 1px solid var(--xf-border); }
+        .xf-nav-btn { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; margin-bottom: 15px; color: var(--xf-dim); transition: 0.2s; }
+        .xf-nav-btn:hover { background: rgba(255,255,255,0.1); color: var(--xf-text); }
+        .xf-nav-btn.active { color: var(--xf-blue); background: rgba(29, 155, 240, 0.1); }
+
+        /* CONTENT AREA */
+        .xf-dash-content { flex: 1; padding: 20px; display: flex; flex-direction: column; overflow-y: auto; position: relative; }
+        .xf-view-header { font-size: 20px; font-weight: 800; margin-bottom: 15px; color: var(--xf-text); display: flex; justify-content: space-between; align-items: center; }
+
+        /* COMPONENTS */
+        .xf-input { width: 100%; padding: 10px; margin-bottom: 10px; background: transparent; border: 1px solid var(--xf-border); color: #fff; border-radius: 4px; outline: none; box-sizing: border-box; font-family: ${FONT_STACK}; font-size: 13px; }
+        .xf-input:focus { border-color: var(--xf-blue); }
+
+        .xf-filters-row { display: flex; gap: 10px; margin-bottom: 10px; }
+
+        /* LIST */
+        #xf-user-list { flex: 1; overflow-y: auto; border: 1px solid var(--xf-border); border-radius: 8px; margin-bottom: 10px; }
+        .xf-user-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; border-bottom: 1px solid var(--xf-border); cursor: pointer; transition: 0.1s; font-size: 12px; }
+        .xf-user-row:hover { background: rgba(255,255,255,0.03); }
         .xf-user-row.xf-blocked { opacity: 0.5; background: rgba(100,0,0,0.1); }
         .xf-u-name { font-weight: bold; color: var(--xf-text); }
         .xf-u-meta { font-size: 11px; color: var(--xf-dim); display: block; margin-top: 2px; }
         .xf-u-risk { font-size: 9px; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #000; }
         .xf-pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; font-size: 11px; color: var(--xf-dim); border-top: 1px solid var(--xf-border); padding-top: 5px; }
         .xf-page-btn { cursor: pointer; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.1); user-select: none; }
+
+        /* GRID CARDS (Tools/Data) */
+        .xf-tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .xf-tool-card { background: var(--xf-sidebar); border: 1px solid var(--xf-border); border-radius: 12px; padding: 20px; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; text-align: center; }
+        .xf-tool-card:hover { border-color: var(--xf-dim); transform: translateY(-2px); background: rgba(255,255,255,0.05); }
+        .xf-tool-icon { font-size: 30px; margin-bottom: 10px; }
+        .xf-tool-title { font-weight: bold; font-size: 14px; margin-bottom: 5px; color: var(--xf-text); }
+        .xf-tool-desc { font-size: 11px; color: var(--xf-dim); }
+
+        /* ACTION BUTTONS */
+        .xf-action-btn { padding: 8px 16px; border-radius: 99px; border: none; font-weight: bold; font-size: 12px; cursor: pointer; transition: 0.2s; }
+        .xf-btn-primary { background: var(--xf-text); color: #000; }
+        .xf-btn-primary:hover { opacity: 0.9; }
+        .xf-btn-danger { background: transparent; border: 1px solid var(--xf-red); color: var(--xf-red); }
+        .xf-btn-danger:hover { background: rgba(249, 24, 128, 0.1); }
+
+        /* --- BATCH MODAL (Legacy Style maintained for Modal) --- */
+        #xf-batch-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 10002; display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px); direction: ${IS_RTL?'rtl':'ltr'}; }
+        .xf-dash-box { /* Used by Batch Modal */ width: 95%; max-width: 400px; max-height: 80vh; background: #000; border: 1px solid var(--xf-border); border-radius: 16px; padding: 16px; font-family: ${FONT_STACK}; box-shadow: 0 20px 50px rgba(0,0,0,0.8); color: #fff; display: flex; flex-direction: column; }
+        .xf-batch-options { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 10px 0; max-height: 100px; overflow-y: auto; background: rgba(255,255,255,0.05); padding: 5px; border-radius: 8px; }
+        .xf-batch-opt { display: flex; align-items: center; font-size: 11px; color: var(--xf-dim); cursor: pointer; }
+        .xf-batch-opt input { margin-right: 5px; cursor: pointer; accent-color: var(--xf-blue); }
+        .xf-btn-row { display: flex; gap: 8px; margin-top: 8px; }
+        .xf-dash-btn { flex: 1; padding: 10px; border-radius: 99px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; font-family: ${FONT_STACK}; font-size: 12px; white-space: nowrap; }
+        .xf-btn-blue { background: var(--xf-blue); color: #fff; }
+        .xf-btn-green { background: var(--xf-green); color: #fff; }
+        .xf-btn-red { background: rgba(249, 24, 128, 0.2); color: var(--xf-red); border: 1px solid var(--xf-red); }
 
         /* --- POPUP CARD --- */
         #xf-card { position: fixed; z-index: 10000; width: 300px; background: var(--xf-bg); backdrop-filter: blur(12px); border: 1px solid var(--xf-border); border-radius: 16px; padding: 12px; color: var(--xf-text); font-family: ${FONT_STACK}; box-shadow: 0 15px 40px rgba(0,0,0,0.7); opacity: 0; transform: translateY(10px); transition: 0.2s; pointer-events: none; direction: ${IS_RTL?'rtl':'ltr'}; text-align: ${IS_RTL?'right':'left'}; }
@@ -294,8 +385,8 @@
         .xf-title { font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--xf-dim); }
         .xf-badge { font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; background: var(--xf-border); color: #fff; }
         .xf-retry { font-size: 16px; cursor: pointer; color: var(--xf-blue); padding: 2px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-left: 10px; }
-        
-        /* TABS */
+
+        /* CARD TABS */
         .xf-tabs-nav { display: flex; border-bottom: 1px solid var(--xf-border); margin-bottom: 10px; gap: 5px; }
         .xf-tab-btn { flex: 1; text-align: center; padding: 6px 0; font-size: 11px; font-weight: bold; color: var(--xf-dim); cursor: pointer; border-bottom: 2px solid transparent; transition: 0.2s; }
         .xf-tab-btn:hover { color: var(--xf-text); background: rgba(255,255,255,0.05); border-radius: 4px 4px 0 0; }
@@ -304,7 +395,7 @@
         .xf-tab-content.active { display: block; }
         @keyframes xf-fade { from { opacity: 0; } to { opacity: 1; } }
 
-        /* CONTENT */
+        /* CARD CONTENT */
         .xf-bar-bg { height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-bottom: 10px; overflow: hidden; }
         .xf-bar-fill { height: 100%; transition: width 0.5s; }
         .xf-status { padding: 8px; border-radius: 6px; font-size: 11px; line-height: 1.3; margin-bottom: 10px; background: rgba(255,255,255,0.03); border-${IS_RTL?'right':'left'}: 3px solid transparent; }
@@ -316,7 +407,7 @@
         .xf-ftr { margin-top: 10px; text-align: center; }
         .xf-btn { display: block; padding: 8px; background: rgba(29,155,240,0.15); color: var(--xf-blue); border-radius: 8px; font-weight: bold; font-size: 11px; text-decoration: none; font-family: ${FONT_STACK}; }
 
-        /* ANALYSIS */
+        /* CARD ANALYSIS */
         .xf-analysis-section { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 8px; border: 1px solid var(--xf-border); }
         .xf-analysis-title { font-size: 11px; font-weight: 800; color: var(--xf-dim); margin-bottom: 8px; text-transform: uppercase; border-bottom: 1px solid var(--xf-border); padding-bottom: 4px; }
         .xf-evidence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 8px; }
@@ -326,7 +417,7 @@
         .xf-evidence-badge.xf-ev-ok { background: rgba(0, 186, 124, 0.1); border-color: var(--xf-green); color: #a2ffce; }
         .xf-analysis-summary { font-size: 11px; color: var(--xf-text); line-height: 1.4; padding: 5px; border-left: 2px solid var(--xf-dim); }
 
-        /* TOOLS */
+        /* CARD TOOLS */
         .xf-tags-container { margin-top: 5px; }
         .xf-tags-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
         .xf-tag-opt { display: flex; align-items: center; font-size: 11px; color: var(--xf-text); cursor: pointer; user-select: none; }
@@ -336,7 +427,14 @@
         .xf-osint-row { display: flex; gap: 15px; margin-top: 15px; justify-content: center; padding-top:10px; border-top:1px solid var(--xf-border); }
         .xf-osint-icon { font-size: 18px; cursor: pointer; opacity: 0.7; transition: 0.2s; text-decoration: none; }
         .xf-osint-icon:hover { opacity: 1; transform: scale(1.2); }
-        
+
+        /* TAG CLOUD (New) */
+        .xf-tag-cloud { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--xf-border); }
+        .xf-tag-btn { background: rgba(255,255,255,0.1); border: 1px solid var(--xf-border); color: var(--xf-dim); padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 11px; transition: 0.2s; user-select: none; }
+        .xf-tag-btn:hover { background: rgba(29,155,240,0.15); color: var(--xf-blue); border-color: var(--xf-blue); }
+        .xf-tag-btn.active { background: var(--xf-blue); color: #fff; border-color: var(--xf-blue); }
+        .xf-tag-count { background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 10px; margin-left: 5px; font-size: 9px; opacity: 0.8; }
+
         /* Language & Misc */
         .xf-lang-section { margin-top:10px; font-size:11px; color:var(--xf-dim); display:flex; gap:5px; align-items:center; }
         .xf-lang-opt { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: 0.2s; }
@@ -430,14 +528,14 @@
         if (!dateStr) return Date.now();
         // If it's a raw timestamp number
         if (typeof dateStr === 'number') return dateStr;
-        
+
         // Normalize digits
         let safeStr = toEnglishDigits(dateStr);
-        
+
         // Check for Shamsi pattern: YYYY/MM/DD or YYYY-MM-DD (where YYYY starts with 13 or 14)
         // Regex looks for 4 digits (starting with 13 or 14), separator, 1-2 digits, separator, 1-2 digits
         const shamsiMatch = safeStr.match(/^(1[34][0-9]{2})[\/\-]([0-9]{1,2})[\/\-]([0-9]{1,2})/);
-        
+
         if (shamsiMatch) {
             // It's Shamsi
             const y = parseInt(shamsiMatch[1]);
@@ -446,7 +544,7 @@
             const gDate = jalaliToGregorian(y, m, d);
             return gDate.getTime();
         }
-        
+
         // Fallback to standard Gregorian parse
         const gTs = Date.parse(safeStr);
         return isNaN(gTs) ? Date.now() : gTs;
@@ -460,12 +558,12 @@
         // Take the first part if there are spaces (e.g. "2,664 ")
         clean = clean.split(' ')[0];
         clean = clean.replace(/,/g, '');
-        
+
         let multiplier = 1;
         if (clean.toUpperCase().includes('K')) { multiplier = 1000; clean = clean.replace(/K/i, ''); }
         else if (clean.toUpperCase().includes('M')) { multiplier = 1000000; clean = clean.replace(/M/i, ''); }
         else if (clean.toUpperCase().includes('B')) { multiplier = 1000000000; clean = clean.replace(/B/i, ''); }
-        
+
         const val = parseFloat(clean);
         return isNaN(val) ? 0 : val * multiplier;
     }
@@ -509,13 +607,6 @@
 
     // --- BATCH PROCESSING LOGIC ---
 
-    function initBatchModal() {
-        batchOverlayEl = document.createElement("div");
-        batchOverlayEl.id = "xf-batch-overlay";
-        batchOverlayEl.style.cssText = "position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 10002; display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px);";
-        document.body.appendChild(batchOverlayEl);
-    }
-
     function updateBatchUI(clearList = false) {
         const statusEl = document.getElementById('xf-batch-status');
         const progressEl = document.getElementById('xf-batch-progress');
@@ -523,50 +614,47 @@
         const startBtn = document.getElementById('xf-batch-start');
         const resultsListEl = document.getElementById('xf-batch-results-list');
 
-        if (!statusEl) return;
+        // Safety Exit
+        if (!statusEl || !startBtn) return;
 
-        if (batchState.isAborted && !batchState.isRunning) {
-            statusEl.textContent = TEXT.batch.status_stopped;
-            statusEl.style.color = 'var(--xf-red)';
-            startBtn.textContent = TEXT.batch.btn_start;
-            startBtn.disabled = false;
-            startBtn.classList.remove('xf-btn-red');
-            startBtn.classList.add('xf-btn-blue');
-        } else if (batchState.isPaused) {
+        if (batchState.isPaused) {
             statusEl.textContent = TEXT.batch.status_paused;
             statusEl.style.color = 'var(--xf-orange)';
-            rateEl.textContent = TEXT.batch.rate_limit_wait.replace('{s}', batchState.currentWaitTime);
+            if (rateEl) rateEl.textContent = TEXT.batch.rate_limit_wait.replace('{s}', batchState.currentWaitTime);
             startBtn.textContent = TEXT.dashboard.btn_stop;
+            startBtn.classList.remove('xf-btn-blue');
+            startBtn.classList.add('xf-btn-red');
         } else if (batchState.isRunning) {
             statusEl.textContent = TEXT.batch.status_running;
             statusEl.style.color = 'var(--xf-blue)';
-            rateEl.textContent = '';
+            if (rateEl) rateEl.textContent = '';
             startBtn.textContent = TEXT.dashboard.btn_stop;
             startBtn.classList.remove('xf-btn-blue');
             startBtn.classList.add('xf-btn-red');
         } else {
-            // Idle or Done
-            if (batchState.total > 0 && batchState.index === batchState.total) {
+            if (batchState.total > 0 && batchState.index >= batchState.total) {
                 statusEl.textContent = TEXT.batch.status_done;
                 statusEl.style.color = 'var(--xf-green)';
             } else {
-                statusEl.textContent = TEXT.batch.status_idle;
-                statusEl.style.color = 'var(--xf-green)';
+                statusEl.textContent = batchState.isAborted ? TEXT.batch.status_stopped : TEXT.batch.status_idle;
+                statusEl.style.color = batchState.isAborted ? 'var(--xf-red)' : 'var(--xf-green)';
             }
-            rateEl.textContent = '';
+            if (rateEl) rateEl.textContent = '';
             startBtn.textContent = TEXT.batch.btn_start;
             startBtn.disabled = false;
             startBtn.classList.remove('xf-btn-red');
             startBtn.classList.add('xf-btn-blue');
         }
 
-        progressEl.innerHTML = TEXT.batch.progress
-            .replace('{c}', batchState.index)
-            .replace('{t}', batchState.total)
-            .replace('{ok}', batchState.okCount)
-            .replace('{err}', batchState.errCount);
+        if (progressEl) {
+            progressEl.innerHTML = TEXT.batch.progress
+                .replace('{c}', batchState.index)
+                .replace('{t}', batchState.total)
+                .replace('{ok}', batchState.okCount)
+                .replace('{err}', batchState.errCount);
+        }
 
-        if (clearList) {
+        if (clearList && resultsListEl) {
             resultsListEl.innerHTML = '';
         } else if (resultsListEl) {
             resultsListEl.scrollTop = resultsListEl.scrollHeight;
@@ -687,40 +775,31 @@
 
 
     async function processBatchStep() {
-        const shouldMerge = document.getElementById('xf-batch-auto-save')?.checked;
-        const shouldSkip = document.getElementById('xf-batch-skip-existing')?.checked; // <--- GET STATE
-
         while (batchState.index < batchState.total && batchState.isRunning && !batchState.isAborted) {
-            const username = batchState.list[batchState.index];
-            const index = batchState.index;
-            const resultsListEl = document.getElementById('xf-batch-results-list');
 
-            if (batchState.isPaused) return;
-
-            if (shouldSkip && db[username]) {
-                if (resultsListEl) {
-                    resultsListEl.innerHTML += `<div style="color:var(--xf-dim);">⏭️ @${username} (Skipped - Exists)</div>`;
-                }
-                // Determine if we should add existing data to batch export or just ignore
-                // For now, we push a minimal record saying it was skipped to keep array aligned
-                // OR we can reconstruct the result from DB if you want to export it anyway
-                // Let's just push a placeholder to keep it simple and fast
-                const skipObj = {};
-                if(batchState.enabledFields.has('username')) skipObj[TEXT.batch.col_username] = username;
-                if(batchState.enabledFields.has('name')) skipObj[TEXT.batch.col_name] = 'SKIPPED (IN DB)';
-                batchState.results.push(skipObj);
-
-                batchState.okCount++;
-                batchState.index++;
+            // Check Paused State (Rate Limit)
+            if (batchState.isPaused) {
                 updateBatchUI();
-                // Minimal delay to keep UI responsive but fast
-                await new Promise(r => setTimeout(r, 50)); 
+                await new Promise(r => setTimeout(r, 1000));
                 continue;
             }
 
-            let result = null;
-            let statusChar = '❌';
+            const username = batchState.list[batchState.index];
+            const resultsListEl = document.getElementById('xf-batch-results-list');
 
+            // --- SKIP LOGIC ---
+            if (batchState.config.skip && db[username]) {
+                if (resultsListEl) {
+                    resultsListEl.innerHTML += `<div style="color:var(--xf-dim);">⏭️ @${username} (Skipped - In DB)</div>`;
+                }
+                batchState.results.push({ [TEXT.batch.col_username]: username, [TEXT.batch.col_name]: 'SKIPPED' });
+                batchState.index++;
+                updateBatchUI();
+                await new Promise(r => setTimeout(r, 10)); // Tiny delay to prevent UI freeze
+                continue;
+            }
+
+            // --- FETCH ---
             try {
                 const url = `https://${location.host}/i/api/graphql/${CONFIG.queryId}/AboutAccountQuery?variables=${encodeURIComponent(JSON.stringify({screenName:username}))}&features=${encodeURIComponent(JSON.stringify(CONFIG.features))}&fieldToggles=${encodeURIComponent(JSON.stringify({withAuxiliaryUserLabels:false}))}`;
 
@@ -733,130 +812,118 @@
                 });
 
                 if (response.status === 429) {
-                    batchState.isRunning = true;
-                    await handleRateLimit();
-                    return;
+                    batchState.isPaused = true;
+                    batchState.currentWaitTime = 60; // 60 seconds
+                    handleRateLimit(); // Start countdown
+                    continue; // Restart loop iteration
                 }
 
                 const json = await response.json();
 
+                // --- HANDLE ERRORS ---
                 if (json.errors && json.errors.length > 0) {
-                     const error = json.errors[0].message;
-                     let displayName = 'ERROR';
+                     const errorMsg = json.errors[0].message;
+                     let statusStr = 'ERROR';
+                     if (errorMsg.includes("Not found") || errorMsg.includes("Suspended")) statusStr = 'SUSPENDED';
 
-                     if (error.includes("Not found") || error.includes("Suspended") || error.includes("Could not find user")) {
-                         result = mapRawDataToBatchOutput({
-                             core: { screen_name: username, name: 'N/A' },
-                             rest_id: 'N/A',
-                             about_profile: {},
-                             is_deleted: true
-                         });
-                         displayName = 'Suspended';
-                         statusChar = '🚫';
-                         batchState.okCount++;
-                     } else {
-                         throw new Error(`API Error: ${error}`);
-                     }
+                     batchState.results.push({ [TEXT.batch.col_username]: username, [TEXT.batch.col_name]: statusStr });
+                     if (resultsListEl) resultsListEl.innerHTML += `<div style="color:var(--xf-red);">❌ @${username} (${statusStr})</div>`;
 
-                     if (resultsListEl) {
-                         resultsListEl.innerHTML += `<div style="color:var(--xf-red);">[${index + 1}/${batchState.total}] ${statusChar} @${username} (${displayName})</div>`;
-                     }
-
+                     // Don't count as error if it's just suspended, it's a valid result
+                     if(statusStr === 'SUSPENDED') batchState.okCount++; else batchState.errCount++;
 
                 } else {
+                    // --- HANDLE SUCCESS ---
                     const res = json?.data?.user?.result || json?.data?.user_result_by_screen_name?.result;
-                    if (!res) throw new Error("No user result data.");
 
-                    result = mapRawDataToBatchOutput(res);
-                    batchState.okCount++;
-                    statusChar = '✅';
+                    if (res) {
+                        const resultObj = mapRawDataToBatchOutput(res);
+                        batchState.results.push(resultObj);
+                        batchState.okCount++;
 
-                    const displayLabel = result[TEXT.batch.col_name] || username;
-                    if (resultsListEl) {
-                         resultsListEl.innerHTML += `<div>[${index + 1}/${batchState.total}] ${statusChar} @${username} (${displayLabel})</div>`;
-                    }
+                        if (resultsListEl) resultsListEl.innerHTML += `<div>✅ @${username}</div>`;
 
-                    if (shouldMerge) {
-                        try {
-                            const about = res.about_profile || res.aboutProfile || {};
-                            const verif = res.verification_info || {};
-                            const core = res.core || res.legacy || {};
-                            const sourceRaw = about.source || TEXT.values.unknown;
-                            let devShort = sourceRaw, devFull = sourceRaw;
-                            const match = sourceRaw.match(SOURCE_REGEX);
-                            if (match) {
-                                const region = match[1].trim(); const type = match[2].toLowerCase(); let tech = TEXT.labels.device;
-                                if (type.includes("app") || type.includes("ios")) tech = "iPhone"; if (type.includes("play") || type.includes("android")) tech = "Android";
-                                devShort = tech; devFull = `${tech} (${region})`;
-                            } else if (IS_MOBILE && sourceRaw !== TEXT.values.unknown) devShort = TEXT.labels.device;
+                        // --- MERGE LOGIC ---
+                        if (batchState.config.merge) {
+                            try {
+                                const core = res.core || res.legacy || {};
+                                const about = res.about_profile || res.aboutProfile || {};
+                                const verif = res.verification_info || {};
 
-                            const rawCountry = about.account_based_in;
-                            const countryDisplay = getCountryDisplay(rawCountry);
-                            const name = core.name || ""; const bio = core.description || "";
-                            const isPersianSpeaker = ARABIC_SCRIPT_REGEX.test(name) || ARABIC_SCRIPT_REGEX.test(bio);
-                            const apiBlocked = res.legacy?.blocking === true;
+                                // --- FIX: Parse Device Source ---
+                                const sourceRaw = about.source || TEXT.values.unknown;
+                                let devShort = sourceRaw, devFull = sourceRaw;
+                                const match = sourceRaw.match(SOURCE_REGEX);
+                                if (match) {
+                                    const region = match[1].trim();
+                                    const type = match[2].toLowerCase();
+                                    let tech = TEXT.labels.device;
+                                    if (type.includes("app") || type.includes("ios")) tech = "iPhone";
+                                    else if (type.includes("play") || type.includes("android")) tech = "Android";
+                                    devShort = tech;
+                                    devFull = `${tech} (${region})`;
+                                } else if (sourceRaw !== TEXT.values.unknown) {
+                                    devShort = TEXT.labels.device;
+                                }
+                                // --------------------------------
 
-                            const createdAt = new Date(res.core?.created_at || res.legacy?.created_at);
-                            const now = Date.now();
-                            const ageDays = Math.max(1, (now - createdAt.getTime()) / (1000 * 60 * 60 * 24));
-                            const tweetCount = res.legacy?.statuses_count || 0;
-                            const tweetsPerDay = (tweetCount / ageDays).toFixed(1);
-                            const following = res.legacy?.friends_count || 0;
-                            const followers = res.legacy?.followers_count || 0;
-                            const ratio = followers > 0 ? (following / followers).toFixed(2) : 0;
-                            const suspiciousLink = SUSPICIOUS_LINKS.test(bio);
+                                const createdAt = new Date(res.core?.created_at || res.legacy?.created_at);
+                                const createdTs = createdAt.getTime();
+                                const now = Date.now();
+                                const ageDays = Math.max(1, (now - createdTs) / (1000 * 60 * 60 * 24));
+                                const tweetCount = res.legacy?.statuses_count || 0;
 
-                            const data = {
-                                country: countryDisplay, countryCode: rawCountry, device: devShort, deviceFull: devFull, id: res.rest_id,
-                                created: formatTime(createdAt), created_raw: createdAt.getTime(), 
-                                renamed: parseInt(about.username_changes?.count || 0),
-                                isAccurate: about.location_accurate, isIdVerified: verif.is_identity_verified === true, langCode: isPersianSpeaker ? 'fa' : null,
-                                avatar: (res.avatar?.image_url || "").replace("_normal", "_400x400"),
-                                isBlocked: apiBlocked,
-                                tpd: tweetsPerDay,
-                                ratio: ratio,
-                                following: following,
-                                hasSusLink: suspiciousLink
-                            };
+                                const data = {
+                                    country: getCountryDisplay(about.account_based_in),
+                                    countryCode: about.account_based_in,
+                                    device: devShort,     
+                                    deviceFull: devFull,   
+                                    id: res.rest_id,
+                                    created: formatTime(createdTs),
+                                    created_raw: createdTs,
+                                    renamed: parseInt(about.username_changes?.count || 0),
+                                    isAccurate: about.location_accurate,
+                                    isIdVerified: verif.is_identity_verified === true,
+                                    langCode: (ARABIC_SCRIPT_REGEX.test(core.name||"") ? 'fa' : null),
+                                    avatar: (res.avatar?.image_url || "").replace("_normal", "_400x400"),
+                                    isBlocked: res.legacy?.blocking === true,
+                                    tpd: (tweetCount / ageDays).toFixed(1),
+                                    ratio: (res.legacy?.followers_count > 0 ? (res.legacy?.friends_count / res.legacy?.followers_count).toFixed(2) : 0),
+                                    following: res.legacy?.friends_count || 0,
+                                    hasSusLink: SUSPICIOUS_LINKS.test(core.description || "")
+                                };
 
-                            let pillText = `📍 ${data.country}`;
-                            if (data.country === TEXT.values.unknown) pillText = `📱 ${IS_MOBILE ? data.device : data.deviceFull}`;
-                            else if (!IS_MOBILE) pillText += ` | 📱 ${data.deviceFull}`; else pillText += ` | 📱 ${data.device}`;
+                                let color = "var(--xf-green)";
+                                if (!data.isAccurate) {
+                                    // Check if device indicates Iran/West Asia to determine risk
+                                    const isTargetDev = (data.deviceFull || "").match(/Iran|West Asia|غرب آسیا/i);
+                                    if (isTargetDev) {
+                                        color = "var(--xf-green)"; // Shield Normal
+                                    } else {
+                                        color = "var(--xf-red)"; // Shield Active
+                                    }
+                                }
+                                else if (data.countryCode === "Iran" || data.countryCode === "West Asia") {
+                                    color = "var(--xf-orange)";
+                                }
 
-                            let color = "var(--xf-green)";
-                            const isTargetLoc = (data.countryCode === "Iran" || data.countryCode === "West Asia");
-                            const isTargetDev = (data.deviceFull || "").match(/Iran|West Asia/i);
-                            if (!data.isAccurate) color = isTargetDev ? "var(--xf-green)" : "var(--xf-red)";
-                            else if (isTargetLoc) color = "var(--xf-orange)";
+                                const existingTags = db[username]?.tags || [];
+                                const existingNote = db[username]?.note || "";
 
-                            const existingTags = db[username]?.tags || [];
-                            const existingNote = db[username]?.note || "";
-
-                            db[username] = {
-                                data, pillText, color, note: existingNote, tags: existingTags,
-                                html: renderCardHTML(data, username, existingTags, existingNote)
-                            };
-                            saveDB();
-                        } catch (mergeErr) {
-                            console.error("Auto-Merge failed for", username, mergeErr);
+                                db[username] = {
+                                    data, pillText: `📍 ${data.country}`, color, note: existingNote, tags: existingTags,
+                                    html: renderCardHTML(data, username, existingTags, existingNote)
+                                };
+                                saveDB();
+                            } catch(e) { console.error("Merge error", e); }
                         }
                     }
                 }
 
-                batchState.results.push(result);
-
             } catch (e) {
-                console.error(`Error fetching @${username}:`, e);
+                console.error(e);
                 batchState.errCount++;
-                const errorObj = {};
-                if(batchState.enabledFields.has('username')) errorObj[TEXT.batch.col_username] = username;
-                if(batchState.enabledFields.has('name')) errorObj[TEXT.batch.col_name] = 'API ERROR';
-
-                batchState.results.push(errorObj);
-
-                if (resultsListEl) {
-                    resultsListEl.innerHTML += `<div style="color:var(--xf-red);">[${index + 1}/${batchState.total}] ❌ @${username} (API Error)</div>`;
-                }
+                if (resultsListEl) resultsListEl.innerHTML += `<div style="color:var(--xf-red);">❌ @${username} (Net Error)</div>`;
             }
 
             batchState.index++;
@@ -864,10 +931,11 @@
             await new Promise(r => setTimeout(r, BATCH_DELAY));
         }
 
-        if (batchState.index === batchState.total || batchState.isAborted) {
+        // Loop Finished
+        if (!batchState.isPaused) {
             batchState.isRunning = false;
+            updateBatchUI();
         }
-        updateBatchUI();
     }
 
     function startBatchProcessing() {
@@ -878,9 +946,15 @@
         }
 
         const inputArea = document.getElementById('xf-batch-input');
+        if (!inputArea) return; // Safety check
+
         const rawList = inputArea.value.split('\n').map(u => u.trim().replace(/^@/, '')).filter(u => u.length > 0);
 
         if (rawList.length === 0) return;
+
+        // --- SAVE CONFIG BEFORE STARTING ---
+        batchState.config.merge = document.getElementById('xf-batch-auto-save')?.checked || false;
+        batchState.config.skip = document.getElementById('xf-batch-skip-existing')?.checked || false;
 
         batchState.list = rawList;
         batchState.total = rawList.length;
@@ -892,7 +966,9 @@
         batchState.isPaused = false;
         batchState.results = [];
 
-        document.getElementById('xf-batch-results-list').innerHTML = '';
+        // Clear UI Log
+        const resultsListEl = document.getElementById('xf-batch-results-list');
+        if(resultsListEl) resultsListEl.innerHTML = '';
 
         updateBatchUI();
         processBatchStep();
@@ -908,103 +984,89 @@
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
     }
 
-    function showBatchModal() {
-        document.getElementById("xf-dash-overlay").style.display = "none";
+    function renderBatchView(container) {
+        container.innerHTML = `
+            <div class="xf-view-header">
+                <button class="xf-action-btn xf-btn-primary" id="xf-back-btn" style="margin-right:10px;">${TEXT.dashboard.btn_back}</button>
+                ${TEXT.batch.title}
+            </div>
 
-        batchOverlayEl.innerHTML = `
-            <div id="xf-batch-box" class="xf-dash-box" style="max-width: 500px; max-height: 90vh;">
-                <div class="xf-dash-title">${TEXT.batch.title}</div>
+            <div style="display:flex; gap:10px; height:100%; overflow:hidden;">
+                <!-- Left: Config -->
+                <div style="flex:1; display:flex; flex-direction:column; overflow-y:auto;">
+                    <textarea id="xf-batch-input" class="xf-textarea" style="height:120px; direction:ltr;" placeholder="${TEXT.batch.input_placeholder}"></textarea>
 
-                <div style="font-size:12px; font-weight:bold; margin-top:5px;">${TEXT.batch.fields_label}</div>
-                <div class="xf-batch-options">
-                    ${BATCH_FIELDS.map(field => `
-                        <label class="xf-batch-opt">
-                            <input type="checkbox" data-id="${field.id}" ${batchState.enabledFields.has(field.id) ? 'checked' : ''}>
-                            ${TEXT.batch[field.labelKey]}
+                    <div style="margin:10px 0; border:1px solid var(--xf-border); padding:10px; border-radius:8px;">
+                        <label class="xf-batch-opt" style="font-weight:bold; color:var(--xf-blue); display:flex; margin-bottom:5px;">
+                            <input type="checkbox" id="xf-batch-auto-save" ${batchState.config.merge ? 'checked' : ''}> ${TEXT.batch.merge_label}
                         </label>
-                    `).join('')}
+                        <label class="xf-batch-opt" style="font-weight:bold; color:var(--xf-orange); display:flex;">
+                            <input type="checkbox" id="xf-batch-skip-existing" ${batchState.config.skip ? 'checked' : ''}> ${TEXT.batch.skip_label}
+                        </label>
+                    </div>
+
+                    <div style="font-size:11px; font-weight:bold; margin-bottom:5px;">${TEXT.batch.fields_label}</div>
+                    <div class="xf-batch-options" style="max-height:150px;">
+                        ${BATCH_FIELDS.map(field => `
+                            <label class="xf-batch-opt"><input type="checkbox" data-id="${field.id}" ${batchState.enabledFields.has(field.id) ? 'checked' : ''}> ${TEXT.batch[field.labelKey]}</label>
+                        `).join('')}
+                    </div>
+
+                    <div class="xf-btn-row" style="margin-top:auto;">
+                        <button id="xf-batch-start" class="xf-dash-btn xf-btn-blue">${TEXT.batch.btn_start}</button>
+                        <button id="xf-batch-export" class="xf-dash-btn xf-btn-green">${TEXT.batch.btn_export_json}</button>
+                    </div>
                 </div>
 
-                <div style="margin-top:10px; border-top:1px solid var(--xf-border); padding-top:5px; display:flex; flex-direction:column; gap:5px;">
-                    <label class="xf-batch-opt" style="font-weight:bold; color:var(--xf-blue);">
-                        <input type="checkbox" id="xf-batch-auto-save">
-                        ${TEXT.batch.merge_label}
-                    </label>
-                    <label class="xf-batch-opt" style="font-weight:bold; color:var(--xf-orange);">
-                        <input type="checkbox" id="xf-batch-skip-existing">
-                        ${TEXT.batch.skip_label}
-                    </label>
-                </div>
+                <!-- Right: Log -->
+                <div style="flex:1; display:flex; flex-direction:column; border-left:1px solid var(--xf-border); padding-left:10px;">
+                    <div style="font-size:12px; font-weight:bold; margin-bottom:5px;">Log</div>
+                    <div id="xf-batch-results-list" style="flex:1; overflow-y:auto; background:rgba(255,255,255,0.05); border-radius:8px; padding:5px; font-size:11px; font-family:monospace; direction:ltr;"></div>
 
-                <textarea id="xf-batch-input" class="xf-textarea" style="height: 100px; margin-top: 5px; direction: ltr;" placeholder="${TEXT.batch.input_placeholder}"></textarea>
+                    <!-- FIXED: Added Rate Status Element Here -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
+                        <div id="xf-batch-status" style="font-size:11px; color:var(--xf-green); font-weight:bold;">${TEXT.batch.status_idle}</div>
+                        <div id="xf-batch-rate-status" style="font-size:10px; color:var(--xf-orange);"></div>
+                    </div>
 
-                <div style="margin: 5px 0; font-size: 13px; font-weight: bold; display: flex; justify-content: space-between;">
-                    <span id="xf-batch-status" style="color: var(--xf-green);">${TEXT.batch.status_idle}</span>
-                    <span id="xf-batch-rate-status" style="color: var(--xf-orange); font-size: 11px;"></span>
-                </div>
-
-                <div id="xf-batch-progress" style="font-size: 11px; color: var(--xf-dim); margin-bottom: 5px; direction: ltr;">
-                    ${TEXT.batch.progress.replace('{c}', 0).replace('{t}', 0).replace('{ok}', 0).replace('{err}', 0)}
-                </div>
-
-                <div class="xf-btn-row">
-                    <button id="xf-batch-start" class="xf-dash-btn xf-btn-blue">${TEXT.batch.btn_start}</button>
-                    <button id="xf-batch-export" class="xf-dash-btn xf-btn-green">${TEXT.batch.btn_export_json}</button>
-                </div>
-                <div class="xf-btn-row">
-                    <button id="xf-batch-clear-list" class="xf-dash-btn xf-btn-red" style="flex: 0.5;">Clear Input</button>
-                    <button id="xf-batch-close" class="xf-dash-btn xf-btn-red" style="background:transparent;border:1px solid var(--xf-dim);color:var(--xf-dim); flex: 1.5;">${TEXT.btn.close}</button>
-                </div>
-
-                <h3 style="font-size: 14px; margin-top: 10px; border-bottom: 1px solid var(--xf-border); padding-bottom: 5px;">Results</h3>
-                <div id="xf-batch-results-list" style="flex: 1; overflow-y: auto; background: #16181c; border-radius: 8px; padding: 5px; font-size: 12px; font-family: monospace; color: var(--xf-text); direction: ltr;">
-                    <!-- Results go here -->
+                    <div id="xf-batch-progress" style="font-size:10px; color:var(--xf-dim); direction:ltr;"></div>
                 </div>
             </div>
         `;
 
-        batchOverlayEl.style.display = "flex";
-
-        const checks = batchOverlayEl.querySelectorAll('.xf-batch-options input[type="checkbox"]');
-        checks.forEach(chk => {
-            chk.onchange = (e) => {
-                const id = e.target.getAttribute('data-id');
-                if (e.target.checked) batchState.enabledFields.add(id);
-                else batchState.enabledFields.delete(id);
-            };
-        });
-
-        document.getElementById('xf-batch-start').onclick = startBatchProcessing;
-        document.getElementById('xf-batch-export').onclick = exportBatchJson;
-        document.getElementById('xf-batch-close').onclick = () => {
-            if (batchState.isRunning) {
-                batchState.isAborted = true;
-            }
-            batchOverlayEl.style.display = "none";
-        };
-        document.getElementById('xf-batch-clear-list').onclick = () => {
-            document.getElementById('xf-batch-input').value = '';
-            batchState.results = [];
-            updateBatchUI(true);
-        };
-
-        if (batchState.list.length > 0 && batchState.index < batchState.total) {
-            document.getElementById('xf-batch-input').value = batchState.list.slice(batchState.index).join('\n');
-        } else if (batchState.list.length > 0) {
-            document.getElementById('xf-batch-input').value = batchState.list.join('\n');
+        if (batchState.list.length > 0) {
+             document.getElementById('xf-batch-input').value = batchState.list.join('\n');
         }
 
         const resultsListEl = document.getElementById('xf-batch-results-list');
-        if (resultsListEl) {
-             batchState.results.forEach(result => {
-                 const username = result[TEXT.batch.col_username] || "???";
-                 const name = result[TEXT.batch.col_name] || "???";
-                 const statusChar = (name === 'ERROR' || name === 'API ERROR' || name === 'SUSPENDED/DELETED') ? '❌' : '✅';
-                 resultsListEl.innerHTML += `<div>${statusChar} @${username} (${name})</div>`;
-             });
+        if (batchState.results.length > 0) {
+            batchState.results.forEach((res) => {
+                let char = '✅';
+                let name = res[TEXT.batch.col_username] || "User";
+                if (Object.values(res).some(v => v === 'API ERROR' || v === 'SUSPENDED')) char = '❌';
+                if (Object.values(res).some(v => v === 'SKIPPED')) char = '⏭️';
+                resultsListEl.innerHTML += `<div>${char} @${name}</div>`;
+            });
+            resultsListEl.scrollTop = resultsListEl.scrollHeight;
         }
 
         updateBatchUI();
+
+        document.getElementById('xf-back-btn').onclick = () => window.xfNavigate('tools');
+
+        const checks = container.querySelectorAll('.xf-batch-options input[type="checkbox"]');
+        checks.forEach(chk => {
+            chk.onchange = (e) => {
+                const id = e.target.getAttribute('data-id');
+                if (e.target.checked) batchState.enabledFields.add(id); else batchState.enabledFields.delete(id);
+            };
+        });
+
+        document.getElementById('xf-batch-auto-save').onchange = (e) => { batchState.config.merge = e.target.checked; };
+        document.getElementById('xf-batch-skip-existing').onchange = (e) => { batchState.config.skip = e.target.checked; };
+
+        document.getElementById('xf-batch-start').onclick = startBatchProcessing;
+        document.getElementById('xf-batch-export').onclick = exportBatchJson;
     }
 
     // --- DASHBOARD UI ---
@@ -1053,29 +1115,6 @@
         document.body.appendChild(input);
     }
 
-    function showLookupPage() {
-        const box = document.getElementById('xf-dash-box');
-        if(!box) return;
-
-        box.innerHTML = `
-            <div class="xf-dash-title">${TEXT.lookup.title}</div>
-            <div style="padding: 20px; text-align: center; flex:1; display:flex; flex-direction:column; justify-content:center;">
-                <p style="color: #71767b; font-size: 12px; margin-bottom: 10px;">${TEXT.lookup.desc}</p>
-                <input type="text" id="xf-lookup-input" class="xf-input" placeholder="${TEXT.lookup.input_ph}" style="text-align:center; font-family:monospace;">
-                <button id="xf-lookup-go" class="xf-dash-btn xf-btn-blue" style="width:100%; margin-top:10px;">${TEXT.lookup.btn_go}</button>
-                <button id="xf-lookup-back" class="xf-dash-btn xf-btn-red" style="width:100%; margin-top:10px; background:transparent; border:1px solid #71767b; color:#71767b;">${TEXT.lookup.btn_back}</button>
-            </div>
-        `;
-
-        document.getElementById('xf-lookup-go').onclick = () => {
-            const val = document.getElementById('xf-lookup-input').value.trim();
-            if(!/^\d+$/.test(val)) return alert("Please enter numbers only.");
-            window.open(`https://x.com/i/user/${val}`, '_blank');
-        };
-
-        document.getElementById('xf-lookup-back').onclick = showDashboard;
-    }
-
     function getRiskKey(label) {
         if (!label) return null;
         // Check English definitions
@@ -1092,30 +1131,30 @@
     function getFilteredUsers() {
         const locFilter = document.getElementById("xf-filter-loc")?.value.toLowerCase() || "";
         const riskFilterLabel = document.getElementById("xf-filter-risk")?.value || "ALL";
+        const tagFilter = document.getElementById("xf-filter-tag")?.value || "ALL"; // <--- NEW INPUT
         const searchFilter = document.getElementById("xf-search-user")?.value.toLowerCase() || "";
 
-        // Convert the Dropdown value (Current Lang) to a Key (e.g., 'detected')
         const riskFilterKey = riskFilterLabel === "ALL" ? "ALL" : getRiskKey(riskFilterLabel);
-
         const allKeys = Object.keys(db).reverse();
         const filteredKeys = [];
 
         for (const user of allKeys) {
             if (!db[user] || !db[user].data) continue;
-            
+
             const entry = db[user].data;
             const tags = db[user].tags || [];
-            
-            // Resolve the Stored Risk Label (Old Lang) to a Key
             const entryRiskKey = getRiskKey(entry.riskLabel);
 
-            // 1. Location Filter
+            // 1. Location
             if (locFilter && !entry.country.toLowerCase().includes(locFilter)) continue;
 
-            // 2. Risk Filter (Compare Keys, not text)
+            // 2. Risk
             if (riskFilterKey !== "ALL" && entryRiskKey !== riskFilterKey) continue;
 
-            // 3. Search Filter
+            // 3. Tag Filter (NEW)
+            if (tagFilter !== "ALL" && !tags.includes(tagFilter)) continue;
+
+            // 4. Search
             if (searchFilter) {
                 const tagMatch = tags.some(t => t.toLowerCase().includes(searchFilter));
                 const idString = entry.id ? String(entry.id) : "";
@@ -1146,9 +1185,9 @@
         for (const user of pageItems) {
             const entry = db[user].data;
             const isBlocked = entry.isBlocked === true;
-            
+
             // Translate stored risk to current language
-            const riskKey = getRiskKey(entry.riskLabel) || 'safe'; 
+            const riskKey = getRiskKey(entry.riskLabel) || 'safe';
             const displayRisk = TEXT.risk[riskKey] || entry.riskLabel;
 
             let badgeColor = "#fff";
@@ -1174,85 +1213,288 @@
         document.getElementById('xf-page-next').onclick = () => { if (currentPage < totalPages) { currentPage++; renderUserList(db); } };
     }
 
+    // --- DASHBOARD CONTROLLER ---
     function showDashboard() {
         currentPage = 1;
-        const count = Object.keys(db).length;
         const overlay = document.getElementById("xf-dash-overlay");
 
+        // Structure
         overlay.innerHTML = `
             <div id="xf-dash-box">
-                <div class="xf-dash-title">
-                    ${TEXT.dashboard.title}
-                    <div class="xf-lang-section">
-                        <span>${TEXT.lang_sel}</span>
-                        <span class="xf-lang-opt ${PREF_LANG==='auto'?'xf-lang-active':''}" id="xf-dash-l-auto">Auto</span>
-                        <span class="xf-lang-opt ${PREF_LANG==='en'?'xf-lang-active':''}" id="xf-dash-l-en">En</span>
-                        <span class="xf-lang-opt ${PREF_LANG==='fa'?'xf-lang-active':''}" id="xf-dash-l-fa">Fa</span>
-                    </div>
+                <div class="xf-dash-sidebar">
+                    <div class="xf-nav-btn active" id="xf-nav-home" title="${TEXT.dashboard.nav_home}">🏠</div>
+                    <div class="xf-nav-btn" id="xf-nav-tools" title="${TEXT.dashboard.nav_tools}">🛠️</div>
+                    <div class="xf-nav-btn" id="xf-nav-data" title="${TEXT.dashboard.nav_data}">💾</div>
+                    <div style="flex:1"></div>
+                    <div class="xf-nav-btn" id="xf-nav-close" title="${TEXT.btn.close}" style="color:var(--xf-red)">✕</div>
                 </div>
-                <div style="font-size:12px;color:#71767b;margin-bottom:10px;">${TEXT.dashboard.count.replace("{n}", count)}</div>
+                <div class="xf-dash-content" id="xf-dash-main"></div>
+            </div>
+        `;
+        overlay.style.display = "flex";
 
-                <input id="xf-search-user" class="xf-input" placeholder="${TEXT.dashboard.search_placeholder}">
-                <input id="xf-filter-loc" class="xf-input" placeholder="${TEXT.dashboard.filter_loc}">
+        const contentDiv = document.getElementById("xf-dash-main");
+        const navBtns = document.querySelectorAll('.xf-nav-btn:not(#xf-nav-close)');
 
-                <select id="xf-filter-risk" class="xf-input">
+        // Router
+        window.xfNavigate = (viewName) => {
+            // Update Sidebar
+            navBtns.forEach(btn => btn.classList.remove('active'));
+            if(['home','tools','data'].includes(viewName)) {
+                document.getElementById(`xf-nav-${viewName}`).classList.add('active');
+            }
+
+            // Render View
+            if (viewName === 'home') renderHomeView(contentDiv);
+            else if (viewName === 'tools') renderToolsView(contentDiv);
+            else if (viewName === 'data') renderDataView(contentDiv);
+            else if (viewName === 'batch') renderBatchView(contentDiv); // Sub-view
+            else if (viewName === 'tags') renderTagCloudView(contentDiv); // Sub-view
+            else if (viewName === 'lookup') renderLookupView(contentDiv); // Sub-view
+        };
+
+        // Bind Sidebar
+        document.getElementById('xf-nav-home').onclick = () => window.xfNavigate('home');
+        document.getElementById('xf-nav-tools').onclick = () => window.xfNavigate('tools');
+        document.getElementById('xf-nav-data').onclick = () => window.xfNavigate('data');
+        document.getElementById('xf-nav-close').onclick = () => { overlay.style.display = "none"; };
+
+        // Init
+        window.xfNavigate('home');
+    }
+
+    // --- VIEW 1: HOME (Database) ---
+    function renderHomeView(container) {
+        const count = Object.keys(db).length;
+
+        // Collect all unique tags for the dropdown
+        const allTags = new Set();
+        Object.values(db).forEach(u => (u.tags || []).forEach(t => allTags.add(t)));
+        const tagOptions = Array.from(allTags).map(t => `<option value="${t}">${TEXT.tags[t] || t}</option>`).join('');
+
+        container.innerHTML = `
+            <div class="xf-view-header">
+                <span>${TEXT.dashboard.title} <span style="font-size:12px;color:var(--xf-dim);">(${count})</span></span>
+                <div style="display:flex; gap:5px;">
+                    <button class="xf-action-btn xf-btn-primary" id="xf-act-export">${TEXT.dashboard.btn_export}</button>
+                    <button class="xf-action-btn xf-btn-danger" id="xf-act-block">${TEXT.dashboard.btn_block}</button>
+                </div>
+            </div>
+
+            <div class="xf-filters-row">
+                <input id="xf-search-user" class="xf-input" style="flex:2;margin:0" placeholder="${TEXT.dashboard.search_placeholder}">
+                <input id="xf-filter-loc" class="xf-input" style="flex:1;margin:0" placeholder="${TEXT.dashboard.filter_loc}">
+            </div>
+            <div class="xf-filters-row">
+                <select id="xf-filter-risk" class="xf-input" style="flex:1;margin:0;background:var(--xf-sidebar);">
                     <option value="ALL">${TEXT.dashboard.opt_all}</option>
                     <option value="${TEXT.risk.anomaly}">${TEXT.risk.anomaly}</option>
                     <option value="${TEXT.risk.detected}">${TEXT.risk.detected}</option>
                     <option value="${TEXT.risk.safe}">${TEXT.risk.safe}</option>
-                    <option value="${TEXT.risk.normal}">${TEXT.risk.normal}</option>
                 </select>
-
-                <div style="font-size:11px;color:var(--xf-dim);margin-top:5px;font-weight:bold;">${TEXT.dashboard.list_header}</div>
-                <div id="xf-user-list"></div>
-                <div id="xf-pagination" class="xf-pagination"></div>
-
-                <div class="xf-btn-row">
-                    <button id="xf-btn-batch" class="xf-dash-btn xf-btn-blue" style="flex:1.5">${TEXT.batch.btn_open}</button>
-                    <button id="xf-btn-lookup" class="xf-dash-btn xf-btn-blue" style="flex:1">${TEXT.dashboard.btn_lookup}</button>
-                </div>
-                <div class="xf-btn-row">
-                    <button id="xf-btn-cloud" class="xf-dash-btn xf-btn-purple">${TEXT.dashboard.btn_cloud}</button>
-                    <button id="xf-btn-contrib" class="xf-dash-btn xf-btn-orange" style="color:#000;">${TEXT.dashboard.btn_contrib}</button>
-                </div>
-                <div class="xf-btn-row">
-                    <button id="xf-btn-backup" class="xf-dash-btn xf-btn-blue">${TEXT.dashboard.btn_backup}</button>
-                    <button id="xf-btn-restore" class="xf-dash-btn xf-btn-green">${TEXT.dashboard.btn_restore}</button>
-                </div>
-                <div class="xf-btn-row">
-                    <button id="xf-btn-csv" class="xf-dash-btn xf-btn-blue" style="background:transparent;border:1px solid var(--xf-blue);color:var(--xf-blue)">${TEXT.dashboard.btn_export}</button>
-                    <button id="xf-btn-clear" class="xf-dash-btn xf-btn-red" style="flex: 0.5;">${TEXT.dashboard.btn_clear}</button>
-                    <button id="xf-btn-block" class="xf-dash-btn xf-btn-red" style="border:1px solid #fff;background:#420000; flex: 1.5;">${TEXT.dashboard.btn_block}</button>
-                </div>
-
-                <div id="xf-dash-close-btn" style="margin-top:10px;text-align:center;font-size:12px;cursor:pointer;color:#71767b;">${TEXT.btn.close}</div>
+                <select id="xf-filter-tag" class="xf-input" style="flex:1;margin:0;background:var(--xf-sidebar);">
+                    <option value="ALL">${TEXT.dashboard.opt_all} (Tags)</option>
+                    ${tagOptions}
+                </select>
             </div>
-        `;
 
-        overlay.style.display = "flex";
+            <div id="xf-user-list"></div>
+            <div id="xf-pagination" class="xf-pagination"></div>
+        `;
 
         document.getElementById("xf-search-user").oninput = () => { currentPage = 1; renderUserList(db); };
         document.getElementById("xf-filter-loc").oninput = () => { currentPage = 1; renderUserList(db); };
         document.getElementById("xf-filter-risk").onchange = () => { currentPage = 1; renderUserList(db); };
-        document.getElementById("xf-btn-backup").onclick = backupJSON;
-        document.getElementById("xf-btn-cloud").onclick = loadFromCloud;
-        document.getElementById("xf-btn-contrib").onclick = contributeData;
-        document.getElementById("xf-btn-restore").onclick = () => document.getElementById("xf-restore-input").click();
-        document.getElementById("xf-btn-csv").onclick = exportCSV;
-        document.getElementById("xf-btn-clear").onclick = clearCache;
-        document.getElementById("xf-btn-block").onclick = handleMassBlock;
-        document.getElementById("xf-btn-batch").onclick = showBatchModal;
-        document.getElementById("xf-btn-lookup").onclick = showLookupPage;
-        document.getElementById("xf-dash-close-btn").onclick = () => { overlay.style.display = "none"; };
+        document.getElementById("xf-filter-tag").onchange = () => { currentPage = 1; renderUserList(db); }; // Tag Event
 
-        document.getElementById('xf-dash-l-auto').onclick = () => setLang('auto');
-        document.getElementById('xf-dash-l-en').onclick = () => setLang('en');
-        document.getElementById('xf-dash-l-fa').onclick = () => setLang('fa');
+        document.getElementById("xf-act-export").onclick = exportCSV;
+        document.getElementById("xf-act-block").onclick = handleMassBlock;
 
         renderUserList(db);
     }
 
+    // --- VIEW 2: TOOLS MENU ---
+    function renderToolsView(container) {
+        container.innerHTML = `
+            <div class="xf-view-header">${TEXT.dashboard.tools_title}</div>
+            <div class="xf-tools-grid">
+                <div class="xf-tool-card" id="xf-tool-batch">
+                    <div class="xf-tool-icon">⚙️</div>
+                    <div class="xf-tool-title">${TEXT.batch.title}</div>
+                    <div class="xf-tool-desc">${TEXT.dashboard.batch_desc}</div>
+                </div>
+
+                <div class="xf-tool-card" id="xf-tool-tags">
+                    <div class="xf-tool-icon">🏷️</div>
+                    <div class="xf-tool-title">${TEXT.dashboard.btn_tags}</div>
+                    <div class="xf-tool-desc">${TEXT.dashboard.tags_desc}</div>
+                </div>
+
+                <div class="xf-tool-card" id="xf-tool-lookup">
+                    <div class="xf-tool-icon">🆔</div>
+                    <div class="xf-tool-title">${TEXT.dashboard.btn_lookup}</div>
+                    <div class="xf-tool-desc">${TEXT.dashboard.lookup_desc}</div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById("xf-tool-batch").onclick = () => window.xfNavigate('batch');
+        document.getElementById("xf-tool-tags").onclick = () => window.xfNavigate('tags');
+        document.getElementById("xf-tool-lookup").onclick = () => window.xfNavigate('lookup');
+    }
+
+    // --- VIEW 3: DATA (Settings) ---
+    function renderDataView(container) {
+        container.innerHTML = `
+            <div class="xf-view-header">${TEXT.dashboard.nav_data}</div>
+
+            <div style="font-size:12px; font-weight:bold; color:var(--xf-dim); margin-bottom:10px;">${TEXT.data.cloud_title}</div>
+            <div class="xf-tools-grid" style="margin-bottom:20px;">
+                <div class="xf-tool-card" id="xf-data-cloud">
+                    <div class="xf-tool-icon">☁️</div>
+                    <div class="xf-tool-title">${TEXT.data.update_db}</div>
+                    <div class="xf-tool-desc">${TEXT.data.update_desc}</div>
+                </div>
+                <div class="xf-tool-card" id="xf-data-contrib">
+                    <div class="xf-tool-icon">📤</div>
+                    <div class="xf-tool-title">${TEXT.data.contrib_title}</div>
+                    <div class="xf-tool-desc">${TEXT.data.contrib_desc}</div>
+                </div>
+            </div>
+
+            <div style="font-size:12px; font-weight:bold; color:var(--xf-dim); margin-bottom:10px;">${TEXT.data.backup_title}</div>
+            <div class="xf-tools-grid">
+                <div class="xf-tool-card" id="xf-data-backup">
+                    <div class="xf-tool-icon">💾</div>
+                    <div class="xf-tool-title">${TEXT.data.backup_json}</div>
+                </div>
+                <div class="xf-tool-card" id="xf-data-restore">
+                    <div class="xf-tool-icon">📥</div>
+                    <div class="xf-tool-title">${TEXT.data.restore_json}</div>
+                </div>
+                <div class="xf-tool-card" id="xf-data-clear" style="border-color:var(--xf-red)">
+                    <div class="xf-tool-icon">🗑️</div>
+                    <div class="xf-tool-title" style="color:var(--xf-red)">${TEXT.data.clear_cache}</div>
+                </div>
+            </div>
+
+            <div style="margin-top:30px; text-align:center;">
+                <div class="xf-lang-section" style="justify-content:center;">
+                    <span>${TEXT.data.lang_label}</span>
+                    <span class="xf-lang-opt ${PREF_LANG==='auto'?'xf-lang-active':''}" id="xf-l-auto">Auto</span>
+                    <span class="xf-lang-opt ${PREF_LANG==='en'?'xf-lang-active':''}" id="xf-l-en">En</span>
+                    <span class="xf-lang-opt ${PREF_LANG==='fa'?'xf-lang-active':''}" id="xf-l-fa">Fa</span>
+                </div>
+            </div>
+        `;
+
+        document.getElementById("xf-data-cloud").onclick = loadFromCloud;
+        document.getElementById("xf-data-contrib").onclick = contributeData;
+        document.getElementById("xf-data-backup").onclick = backupJSON;
+        document.getElementById("xf-data-restore").onclick = () => document.getElementById("xf-restore-input").click();
+        document.getElementById("xf-data-clear").onclick = clearCache;
+
+        document.getElementById('xf-l-auto').onclick = () => setLang('auto');
+        document.getElementById('xf-l-en').onclick = () => setLang('en');
+        document.getElementById('xf-l-fa').onclick = () => setLang('fa');
+    }
+
+    // --- SUB-VIEW: TAG CLOUD ---
+    function renderTagCloudView(container) {
+        const tagCounts = {};
+        const tagLabels = {};
+        const allTagKeys = ['loc_change', 'base_iran', 'cyber', 'fake', 'flag_ir', 'suspicious', 'foreigner'];
+
+        allTagKeys.forEach(k => { tagCounts[k] = 0; tagLabels[k] = TEXT.tags[k] || k; });
+        Object.values(db).forEach(user => { (user.tags || []).forEach(tag => { tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
+
+        let tagsHtml = '';
+        allTagKeys.forEach(key => {
+            tagsHtml += `<div class="xf-tag-btn" data-tag="${key}">${tagLabels[key]} <span class="xf-tag-count">${tagCounts[key]}</span></div>`;
+        });
+
+        container.innerHTML = `
+            <div class="xf-view-header">
+                <button class="xf-action-btn xf-btn-primary" id="xf-back-btn" style="margin-right:10px;">${TEXT.dashboard.btn_back}</button>
+                ${TEXT.dashboard.btn_tags}
+            </div>
+            <div class="xf-tag-cloud">${tagsHtml}</div>
+            <div style="font-size:11px;color:var(--xf-dim);margin-bottom:5px;font-weight:bold;">Filtered Users:</div>
+            <div id="xf-tag-results" style="flex:1; overflow-y:auto; border:1px solid var(--xf-border); border-radius:8px; padding:5px; background:rgba(255,255,255,0.03);">
+                <div style="padding:20px; text-align:center; color:var(--xf-dim);">Select a tag above.</div>
+            </div>
+        `;
+
+        document.getElementById('xf-back-btn').onclick = () => window.xfNavigate('tools');
+
+        const resultsDiv = document.getElementById("xf-tag-results");
+        container.querySelectorAll('.xf-tag-btn').forEach(btn => {
+            btn.onclick = () => {
+                container.querySelectorAll('.xf-tag-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                renderTaggedUsers(btn.dataset.tag, resultsDiv);
+            };
+        });
+    }
+
+    // --- SUB-VIEW: ID LOOKUP ---
+    function renderLookupView(container) {
+        container.innerHTML = `
+            <div class="xf-view-header">
+                <button class="xf-action-btn xf-btn-primary" id="xf-back-btn" style="margin-right:10px;">${TEXT.dashboard.btn_back}</button>
+                ${TEXT.lookup.title}
+            </div>
+            <div style="padding: 40px; text-align: center; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <p style="color:var(--xf-dim); font-size:13px; margin-bottom:20px; max-width:300px;">${TEXT.lookup.desc}</p>
+                <input type="text" id="xf-lookup-input" class="xf-input" placeholder="${TEXT.lookup.input_ph}" style="text-align:center; font-family:monospace; font-size:16px; width:220px; margin-bottom: 15px;">
+
+                <!-- Fixed Button Style -->
+                <button id="xf-lookup-go" class="xf-btn-blue" style="
+                    width: 220px;
+                    padding: 10px;
+                    border-radius: 99px;
+                    border: none;
+                    cursor: pointer;
+                    font-weight: bold;
+                    font-family: inherit;
+                    flex: 0 0 auto; /* Prevent Flex Stretch */
+                ">
+                    ${TEXT.lookup.btn_go}
+                </button>
+            </div>
+        `;
+
+        document.getElementById('xf-back-btn').onclick = () => window.xfNavigate('tools');
+        document.getElementById('xf-lookup-go').onclick = () => {
+            const val = document.getElementById('xf-lookup-input').value.trim();
+            if(!/^\d+$/.test(val)) return alert("Invalid ID (Numbers only)");
+            window.open(`https://x.com/i/user/${val}`, '_blank');
+        };
+    }
+
+    function renderTaggedUsers(tag, container) {
+        container.innerHTML = '';
+        const users = [];
+        Object.entries(db).forEach(([username, data]) => { if (data.tags && data.tags.includes(tag)) users.push({ username, ...data }); });
+
+        if (users.length === 0) {
+            container.innerHTML = `<div style="padding:10px;text-align:center;color:var(--xf-dim);">No users found.</div>`;
+            return;
+        }
+
+        users.forEach(u => {
+            const row = document.createElement("div");
+            row.className = "xf-user-row";
+            row.innerHTML = `<div><div class="xf-u-name">@${u.username}</div><span class="xf-u-meta">📍 ${u.data.country}</span></div><div style="font-size:10px; color:var(--xf-blue); cursor:pointer;">OPEN ↗</div>`;
+            row.onclick = () => window.open(`https://x.com/${u.username}`, '_blank');
+            container.appendChild(row);
+        });
+    }
+
     async function handleMassBlock() {
+        // Correct ID for the new dashboard layout
+        const btn = document.getElementById("xf-act-block");
+
         if (isBlockingProcess) {
             abortBlock = true;
             return;
@@ -1265,14 +1507,17 @@
 
         if(!confirm(TEXT.dashboard.msg_block_conf.replace("{n}", usersToBlock.length))) return;
 
-        const btn = document.getElementById("xf-btn-block");
-        const originalText = TEXT.dashboard.btn_block;
-
+        // Visual State Update
         isBlockingProcess = true;
         abortBlock = false;
-        btn.innerText = TEXT.dashboard.btn_stop;
-        btn.style.background = "#fff";
-        btn.style.color = "#000";
+
+        const originalText = TEXT.dashboard.btn_block;
+
+        if (btn) {
+            btn.innerText = TEXT.dashboard.btn_stop;
+            btn.style.background = "#fff";
+            btn.style.color = "#000";
+        }
 
         let successCount = 0;
 
@@ -1282,13 +1527,21 @@
             const username = usersToBlock[i];
             const userId = db[username].data.id;
 
-            btn.innerText = `${TEXT.dashboard.btn_stop} (${i+1}/${usersToBlock.length})`;
+            // Check if button still exists (in case user switched views)
+            if (document.getElementById("xf-act-block")) {
+                document.getElementById("xf-act-block").innerText = `${TEXT.dashboard.btn_stop} (${i+1}/${usersToBlock.length})`;
+            }
 
             try {
                 await performBlock(userId);
-                db[username].data.isBlocked = true;
+                if (db[username]) {
+                    db[username].data.isBlocked = true;
+                }
                 saveDB();
-                renderUserList(db);
+                // Only re-render if we are still on the Home view
+                if (document.getElementById("xf-user-list")) {
+                    renderUserList(db);
+                }
                 successCount++;
             } catch (e) {
                 console.error("Block failed for", username, e);
@@ -1297,9 +1550,14 @@
         }
 
         isBlockingProcess = false;
-        btn.style.background = "#420000";
-        btn.style.color = "#fff";
-        btn.innerText = originalText;
+
+        // Restore Button State if visible
+        const finalBtn = document.getElementById("xf-act-block");
+        if (finalBtn) {
+            finalBtn.style.background = ""; // Reset to CSS default (red class)
+            finalBtn.style.color = "";
+            finalBtn.innerText = originalText;
+        }
 
         if (abortBlock) {
             alert(TEXT.dashboard.msg_block_stop);
@@ -1598,9 +1856,9 @@
         // 1. Rename Analysis (UPDATED: Check > 10)
         if (data.renamed > 0) {
             let style = data.renamed > 10 ? "xf-ev-warn" : "xf-ev-ok";
-            if (data.renamed > 10) { 
-                reportParts.push(TEXT.analysis.reason_rented.replace('{n}', data.renamed)); 
-                riskScore += 2; 
+            if (data.renamed > 10) {
+                reportParts.push(TEXT.analysis.reason_rented.replace('{n}', data.renamed));
+                riskScore += 2;
             }
             badges.push(`<span class="xf-evidence-badge ${style}">🎭 ${TEXT.labels.renamed}: ${data.renamed}</span>`);
         }
@@ -1660,7 +1918,10 @@
             { id: 'loc_change', label: TEXT.tags.loc_change },
             { id: 'base_iran', label: TEXT.tags.base_iran },
             { id: 'cyber', label: TEXT.tags.cyber },
-            { id: 'fake', label: TEXT.tags.fake }
+            { id: 'fake', label: TEXT.tags.fake },
+            { id: 'flag_ir', label: TEXT.tags.flag_ir },
+            { id: 'suspicious', label: TEXT.tags.suspicious },
+            { id: 'foreigner', label: TEXT.tags.foreigner }
         ];
 
         const toolsContent = `
@@ -1766,11 +2027,11 @@
 
     async function fetchData(user, forceRefresh = false) {
         let result = null;
-        
+
         const currentPath = window.location.pathname.toLowerCase();
         const targetPath = "/" + user.toLowerCase();
         const isOnProfile = currentPath === targetPath || currentPath.startsWith(targetPath + "/");
-        
+
         let domStats = { following: null, followers: null, tweets: null };
 
         if (isOnProfile) {
@@ -1783,7 +2044,7 @@
 
             if (isOnProfile) {
                  if (domStats.following !== null) { result.data.following = domStats.following; needsUpdate = true; }
-                 if (domStats.followers !== null) { 
+                 if (domStats.followers !== null) {
                      const r = domStats.followers > 0 ? (domStats.following / domStats.followers).toFixed(2) : 0;
                      result.data.ratio = r;
                      needsUpdate = true;
@@ -1794,11 +2055,11 @@
                      if (!createdTs || isNaN(createdTs)) {
                          createdTs = parseFlexibleDate(result.data.created);
                      }
-                     
+
                      const now = Date.now();
                      // Calculate days, ensure min 1 day to prevent Infinity
                      const ageDays = Math.max(1, (now - createdTs) / (1000 * 60 * 60 * 24));
-                     
+
                      result.data.tpd = (domStats.tweets / ageDays).toFixed(1);
                      // Store the fixed timestamp for future
                      if(!result.data.created_raw) { result.data.created_raw = createdTs; }
@@ -1809,7 +2070,7 @@
             const currentTags = result.tags || [];
             const currentNote = result.note || "";
             result.html = renderCardHTML(result.data, user, currentTags, currentNote);
-            
+
             if(needsUpdate) { db[user] = result; saveDB(); }
 
             return result;
@@ -1940,7 +2201,6 @@
 
     setTimeout(() => {
         initDashboard();
-        initBatchModal();
     }, 2000);
 
     let observerTimeout;
