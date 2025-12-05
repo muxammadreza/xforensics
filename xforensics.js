@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         X Profile Forensics (v20.5.0)
+// @name         X Profile Forensics (v20.7.0)
 // @namespace    http://tampermonkey.net/
-// @version      20.5.0
-// @description  Forensics tool. Dashboard redesigned, new features, and bug fixes.
+// @version      20.7.0
+// @description  Forensics tool. additon of Forensic Search.
 // @author       https://x.com/yebekhe
 // @match        https://x.com/*
 // @match        https://twitter.com/*
@@ -22,7 +22,7 @@
 
     const TRANSLATIONS = {
         en: {
-            title: "Forensics v20.5",
+            title: "Forensics v20.7",
             menu_btn: "Forensics",
             labels: { location: "Location", device: "Device", id: "Perm ID", created: "Created", renamed: "Renamed", identity: "Identity", lang: "Language", type: "Type" },
             risk: { safe: "SAFE", detected: "DETECTED", anomaly: "ANOMALY", caution: "CAUTION", normal: "NORMAL", verified: "VERIFIED ID" },
@@ -110,10 +110,16 @@
                 restore_json: "Restore JSON",
                 clear_cache: "Clear Cache",
                 lang_label: "Language:"
-            }
+            },
+            search: {
+                title: "Forensic Search",
+                interact: "Interactions (Replies)",
+                keywords: "Keyword Check",
+                custom: "Custom Search",
+            },
         },
         fa: {
-            title: "تحلیلگر پروفایل ۲۰.۵",
+            title: "تحلیلگر پروفایل ۲۰.٧",
             menu_btn: "جرم‌شناسی",
             labels: { location: "موقعیت", device: "دستگاه", id: "شناسه", created: "ساخت", renamed: "تغییر نام", identity: "هویت", lang: "زبان", type: "نوع" },
             risk: { safe: "امن", detected: "هشدار", anomaly: "ناهنجاری", caution: "احتیاط", normal: "طبیعی", verified: "تایید شده" },
@@ -201,6 +207,12 @@
                 restore_json: "بازگردانی JSON",
                 clear_cache: "حذف حافظه",
                 lang_label: "زبان رابط کاربری:"
+            },
+            search: {
+                title: "جستجوی جرم‌شناسی",
+                interact: "تعاملات (پاسخ‌ها)",
+                keywords: "بررسی کلیدواژه‌ها",
+                custom: "جستجوی دلخواه"
             }
         }
     };
@@ -391,7 +403,7 @@
         .xf-tab-btn { flex: 1; text-align: center; padding: 6px 0; font-size: 11px; font-weight: bold; color: var(--xf-dim); cursor: pointer; border-bottom: 2px solid transparent; transition: 0.2s; }
         .xf-tab-btn:hover { color: var(--xf-text); background: rgba(255,255,255,0.05); border-radius: 4px 4px 0 0; }
         .xf-tab-btn.active { color: var(--xf-blue); border-bottom-color: var(--xf-blue); }
-        .xf-tab-content { display: none; animation: xf-fade 0.2s; max-height: 400px; overflow-y: auto; }
+        .xf-tab-content { display: none; animation: xf-fade 0.2s; max-height: 450px; overflow-y: auto; }
         .xf-tab-content.active { display: block; }
         @keyframes xf-fade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -1924,6 +1936,15 @@
             { id: 'foreigner', label: TEXT.tags.foreigner }
         ];
 
+        // Specific keywords requested
+        const searchKeywords = [
+            { label: "Pahlavi/Monarchy", query: "پهلوی OR شاه OR سلطنت OR رضا پهلوی" },
+            { label: "Israel/Zionist", query: "اسراییل OR صهیونیست OR رژیم OR Zionist" },
+            { label: "Military/War", query: "نظامی OR سپاه OR جنگ OR ارتش" },
+            { label: "Civilian Casualties", query: "کشته OR غیرنظامی OR کودک OR زن" },
+            { label: "Regime/Gov", query: "نظام OR جمهوری اسلامی OR انقلاب" }
+        ];
+
         const toolsContent = `
             <div class="xf-tags-container">
                 <div class="xf-tags-title">${TEXT.tags.title}</div>
@@ -1936,7 +1957,32 @@
                     `).join('')}
                 </div>
             </div>
+
+            <!-- NEW FORENSIC SEARCH SECTION -->
+            <div class="xf-analysis-section" style="margin-top:10px; border-color:var(--xf-border);">
+                <div class="xf-analysis-title">${TEXT.search ? TEXT.search.title : "Forensic Search"}</div>
+                
+                <!-- 1. Interactions -->
+                <div style="margin-bottom:8px;">
+                    <a href="https://x.com/search?q=(from:${username}) filter:replies&src=typed_query&f=live" target="_blank" class="xf-btn" style="text-align:center; margin-bottom:5px;">
+                        💬 ${TEXT.search ? TEXT.search.interact : "Check Replies"}
+                    </a>
+                </div>
+
+                <!-- 2. Keyword Buttons -->
+                <div style="font-size:10px; color:var(--xf-dim); margin-bottom:4px;">${TEXT.search ? TEXT.search.keywords : "Keywords"}:</div>
+                <div class="xf-tags-grid">
+                    ${searchKeywords.map(k => `
+                        <a href="https://x.com/search?q=(from:${username}) (${encodeURIComponent(k.query)})&src=typed_query&f=live" 
+                           target="_blank" class="xf-tag-btn" style="text-align:center; text-decoration:none; display:block;">
+                           ${k.label}
+                        </a>
+                    `).join('')}
+                </div>
+            </div>
+
             <textarea class="xf-textarea" id="xf-note-input" data-user="${username}" placeholder="${TEXT.notes_placeholder}">${existingNote}</textarea>
+            
             <div class="xf-osint-row">
                 <a href="https://web.archive.org/web/*/twitter.com/${username}" target="_blank" title="${TEXT.osint_titles.archive}" class="xf-osint-icon">🏛️</a>
                 <a href="https://www.google.com/search?q=%22${username}%22" target="_blank" title="${TEXT.osint_titles.google}" class="xf-osint-icon">🔍</a>
@@ -2013,7 +2059,7 @@
         if (!tooltipEl) { tooltipEl = document.createElement("div"); tooltipEl.id = "xf-card"; tooltipEl.onmouseenter = () => clearTimeout(hideTimeout); tooltipEl.onmouseleave = hideDesktop; document.body.appendChild(tooltipEl); }
         tooltipEl.innerHTML = html; bindEvents(tooltipEl); tooltipEl.className = "visible";
         let top = e.clientY + 20, left = e.clientX;
-        if (IS_RTL) left -= 320; if (left + 340 > window.innerWidth) left = window.innerWidth - 360; if (top + 400 > window.innerHeight) top = e.clientY - 400;
+        if (IS_RTL) left -= 320; if (left + 340 > window.innerWidth) left = window.innerWidth - 360; if (top + 400 > window.innerHeight) top = e.clientY - 450;
         tooltipEl.style.top = top + "px"; tooltipEl.style.left = left + "px";
     }
     function hideDesktop() { hideTimeout = setTimeout(() => { if (tooltipEl) tooltipEl.className = ""; }, 200); }
