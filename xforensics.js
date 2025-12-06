@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         X Profile Forensics (v20.8.0)
+// @name         X Profile Forensics (v21.0.0)
 // @namespace    http://tampermonkey.net/
-// @version      20.8.0
-// @description  Forensics tool. additon of Forensic Search.
+// @version      21.0.0
+// @description  Forensics tool. Add search scraper, data management tools, and optimize performance
 // @author       https://x.com/yebekhe
 // @match        https://x.com/*
 // @match        https://twitter.com/*
@@ -22,7 +22,7 @@
 
     const TRANSLATIONS = {
         en: {
-            title: "Forensics v20.8",
+            title: "Forensics v21.0",
             menu_btn: "Forensics",
             labels: { location: "Location", device: "Device", id: "Perm ID", created: "Created", renamed: "Renamed", identity: "Identity", lang: "Language", type: "Type" },
             risk: { safe: "SAFE", detected: "DETECTED", anomaly: "ANOMALY", caution: "CAUTION", normal: "NORMAL", verified: "VERIFIED ID" },
@@ -117,9 +117,26 @@
                 keywords: "Keyword Check",
                 custom: "Custom Search",
             },
+            import_opt: {
+                title: "Import Strategy",
+                desc: "How should we handle duplicate users?",
+                keep_local: "Merge (Keep My Data)",
+                keep_local_desc: "If user exists, keep my current notes/tags.",
+                prefer_new: "Merge (Update Data)",
+                prefer_new_desc: "If user exists, overwrite with new data.",
+                overwrite: "Overwrite All",
+                overwrite_desc: "Delete my DB and replace with this file.",
+                cancel: "Cancel"
+            },
+            dumper: {
+                btn_start: "📥 Grab Tweets",
+                btn_stop: "🔴 Stop ({n})",
+                msg_started: "Scraper Started! Scroll down slowly...",
+                msg_stopped: "Stopped. Saving {n} tweets..."
+            },
         },
         fa: {
-            title: "تحلیلگر پروفایل ۲۰.۸",
+            title: "تحلیلگر پروفایل ۲۱.۰",
             menu_btn: "جرم‌شناسی",
             labels: { location: "موقعیت", device: "دستگاه", id: "شناسه", created: "ساخت", renamed: "تغییر نام", identity: "هویت", lang: "زبان", type: "نوع" },
             risk: { safe: "امن", detected: "هشدار", anomaly: "ناهنجاری", caution: "احتیاط", normal: "طبیعی", verified: "تایید شده" },
@@ -213,6 +230,23 @@
                 interact: "تعاملات (پاسخ‌ها)",
                 keywords: "بررسی کلیدواژه‌ها",
                 custom: "جستجوی دلخواه"
+            },
+            import_opt: {
+                title: "روش وارد کردن داده",
+                desc: "در صورت وجود کاربر تکراری چه کنیم؟",
+                keep_local: "ادغام (حفظ دیتای من)",
+                keep_local_desc: "اولویت با دیتای فعلی شماست.",
+                prefer_new: "ادغام (بروزرسانی)",
+                prefer_new_desc: "دیتای جدید جایگزین دیتای قبلی می‌شود.",
+                overwrite: "جایگزینی کامل",
+                overwrite_desc: "دیتای فعلی حذف و دیتای جدید جایگزین شود.",
+                cancel: "لغو"
+            },
+            dumper: {
+                btn_start: "📥 استخراج توییت",
+                btn_stop: "🔴 توقف ({n})",
+                msg_started: "شروع شد! آرام اسکرول کنید...",
+                msg_stopped: "پایان. ذخیره {n} توییت..."
             }
         }
     };
@@ -226,6 +260,12 @@
 
     let saveTimeout;
     let db = {};
+
+    // Globals for Search Dumper
+    let isRecordingSearch = false;
+    let recordedTweets = new Map(); // Use Map to prevent duplicates
+    let searchScrapeInterval = null;
+    let dumperBtn = null;
 
     // Globals for Blocking
     let isBlockingProcess = false;
@@ -617,6 +657,142 @@
         return { following, followers, tweets };
     }
 
+    // --- SEARCH DUMPER LOGIC ---
+
+    function injectSearchDumper() {
+        // Only run on Search Pages
+        if (!location.pathname.includes('/search')) {
+            if (dumperBtn) dumperBtn.remove();
+            dumperBtn = null;
+            return;
+        }
+
+        // Check if already injected
+        if (document.getElementById('xf-dumper-btn')) return;
+
+        // Try to find the Search Bar area
+        // We look for the main header or the search form container
+        const searchForm = document.querySelector('form[role="search"]');
+        if (!searchForm) return;
+
+        // Create the Button
+        const btn = document.createElement("div");
+        btn.id = "xf-dumper-btn";
+        btn.innerHTML = `<span>${TEXT.dumper.btn_start}</span>`;
+        
+        // CSS to make it look native but distinct
+        btn.style.cssText = `
+            display: flex; align-items: center; justify-content: center;
+            height: 30px; padding: 0 15px; margin-left: 10px;
+            background: rgba(29, 155, 240, 0.1); color: var(--xf-blue);
+            border: 1px solid var(--xf-blue); border-radius: 99px;
+            font-weight: bold; font-size: 13px; cursor: pointer;
+            white-space: nowrap; user-select: none; transition: 0.2s;
+        `;
+
+        btn.onclick = toggleSearchDumper;
+
+        // Inject right after the search form
+        // We use parentNode to sit next to the search bar, not inside it
+        const container = searchForm.parentNode;
+        container.style.display = "flex"; // Ensure they sit side-by-side
+        container.style.alignItems = "center";
+        container.appendChild(btn);
+        dumperBtn = btn;
+    }
+
+    function toggleSearchDumper() {
+        const btn = document.getElementById('xf-dumper-btn');
+        if (!isRecordingSearch) {
+            // START RECORDING
+            isRecordingSearch = true;
+            recordedTweets.clear();
+            btn.style.background = "rgba(249, 24, 128, 0.1)";
+            btn.style.color = "var(--xf-red)";
+            btn.style.borderColor = "var(--xf-red)";
+            btn.innerHTML = `<span>${TEXT.dumper.msg_started}</span>`;
+            
+            // Start the interval to grab tweets every 1 second
+            searchScrapeInterval = setInterval(scrapeVisibleTweets, 1000);
+        } else {
+            // STOP RECORDING
+            isRecordingSearch = false;
+            clearInterval(searchScrapeInterval);
+            
+            btn.innerHTML = `<span>💾 Saving...</span>`;
+            
+            // Export Data
+            const data = Array.from(recordedTweets.values());
+            if (data.length > 0) {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `xf_search_dump_${Date.now()}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                alert(TEXT.dumper.msg_stopped.replace('{n}', data.length));
+            } else {
+                alert("No tweets found.");
+            }
+
+            // Reset Button
+            btn.style.background = "rgba(29, 155, 240, 0.1)";
+            btn.style.color = "var(--xf-blue)";
+            btn.style.borderColor = "var(--xf-blue)";
+            btn.innerHTML = `<span>${TEXT.dumper.btn_start}</span>`;
+        }
+    }
+
+    function scrapeVisibleTweets() {
+        const articles = document.querySelectorAll('article[data-testid="tweet"]');
+        let newCount = 0;
+
+        articles.forEach(art => {
+            try {
+                // 1. Get Link & ID
+                const timeEl = art.querySelector('time');
+                if (!timeEl) return;
+                
+                const time = timeEl.getAttribute('datetime');
+                const linkEl = timeEl.closest('a');
+                if (!linkEl) return;
+                
+                const url = linkEl.getAttribute('href');
+                const id = url.split('/').pop();
+
+                if (recordedTweets.has(id)) return; // Skip duplicates
+
+                // 2. Get Text
+                const textEl = art.querySelector('div[data-testid="tweetText"]');
+                const text = textEl ? textEl.innerText : "[Media/No Text]";
+
+                // 3. Get User
+                const userEl = art.querySelector('div[data-testid="User-Name"] a[href^="/"]');
+                const username = userEl ? userEl.getAttribute('href').replace('/', '') : "Unknown";
+
+                recordedTweets.set(id, {
+                    id: id,
+                    date: time,
+                    username: username,
+                    text: text,
+                    url: `https://x.com${url}`
+                });
+                newCount++;
+            } catch (e) {
+                // Ignore parsing errors for ads/weird elements
+            }
+        });
+
+        // Update Button Count
+        if (isRecordingSearch) {
+            const btn = document.getElementById('xf-dumper-btn');
+            if (btn) {
+                btn.innerHTML = `<span>${TEXT.dumper.btn_stop.replace('{n}', recordedTweets.size)}</span>`;
+            }
+        }
+    }
+
     // --- BATCH PROCESSING LOGIC ---
 
     function updateBatchUI(clearList = false) {
@@ -958,29 +1134,80 @@
         }
 
         const inputArea = document.getElementById('xf-batch-input');
-        if (!inputArea) return; // Safety check
+        if (!inputArea) return;
 
-        const rawList = inputArea.value.split('\n').map(u => u.trim().replace(/^@/, '')).filter(u => u.length > 0);
+        // 1. Clean Input
+        const rawList = inputArea.value.split('\n')
+            .map(u => u.trim().replace(/^@/, ''))
+            .filter(u => u.length > 0);
 
         if (rawList.length === 0) return;
 
-        // --- SAVE CONFIG BEFORE STARTING ---
+        // 2. Load Config
         batchState.config.merge = document.getElementById('xf-batch-auto-save')?.checked || false;
         batchState.config.skip = document.getElementById('xf-batch-skip-existing')?.checked || false;
 
-        batchState.list = rawList;
-        batchState.total = rawList.length;
+        // 3. Clear UI Log
+        const resultsListEl = document.getElementById('xf-batch-results-list');
+        if(resultsListEl) resultsListEl.innerHTML = '';
+
+        // --- OPTIMIZATION START ---
+        let listToProcess = rawList;
+        let skippedCount = 0;
+
+        // If "Skip Existing" is ON, filter the array BEFORE starting the loop
+        if (batchState.config.skip) {
+            const needed = [];
+            const skipped = [];
+            
+            rawList.forEach(username => {
+                if (db[username]) {
+                    skipped.push(username);
+                    // Add to results immediately without UI lag
+                    batchState.results.push({ 
+                        [TEXT.batch.col_username]: username, 
+                        [TEXT.batch.col_name]: 'SKIPPED (In DB)' 
+                    });
+                } else {
+                    needed.push(username);
+                }
+            });
+
+            listToProcess = needed;
+            skippedCount = skipped.length;
+
+            // Log a single summary message instead of 5000 lines
+            if (skippedCount > 0 && resultsListEl) {
+                resultsListEl.innerHTML += `<div style="color:var(--xf-dim); padding:10px; border-bottom:1px solid var(--xf-border); background:rgba(255,255,255,0.05);">
+                    ⏩ <strong>Fast Forward:</strong> ${skippedCount} users were already in the database and skipped.<br>
+                    Starting process for the remaining ${listToProcess.length} users...
+                </div>`;
+            }
+        }
+        // --- OPTIMIZATION END ---
+
+        if (listToProcess.length === 0) {
+            if (resultsListEl) resultsListEl.innerHTML += `<div style="color:var(--xf-green); font-weight:bold; padding:10px;">✅ All users processed! (All were skipped)</div>`;
+            return;
+        }
+
+        // 4. Initialize State with the OPTIMIZED list
+        batchState.list = listToProcess;
+        
+        // We set 'total' to the smaller list length so the progress bar 0-100% represents the ACTIVE work
+        batchState.total = listToProcess.length; 
+        
         batchState.index = 0;
-        batchState.okCount = 0;
+        batchState.okCount = skippedCount; // Start count with the ones we already "did"
         batchState.errCount = 0;
         batchState.isRunning = true;
         batchState.isAborted = false;
         batchState.isPaused = false;
-        batchState.results = [];
-
-        // Clear UI Log
-        const resultsListEl = document.getElementById('xf-batch-results-list');
-        if(resultsListEl) resultsListEl.innerHTML = '';
+        
+        // Don't reset results if we just filled it with skipped items
+        if (!batchState.config.skip) {
+            batchState.results = [];
+        }
 
         updateBatchUI();
         processBatchStep();
@@ -1125,6 +1352,16 @@
         input.type = "file"; input.id = "xf-restore-input"; input.style.display = "none"; input.accept = ".json";
         input.onchange = handleRestore;
         document.body.appendChild(input);
+
+        // --- NEW: Extract Input ---
+        const extractInput = document.createElement("input");
+        extractInput.type = "file"; 
+        extractInput.id = "xf-extract-input"; 
+        extractInput.style.display = "none"; 
+        extractInput.accept = ".json";
+        extractInput.onchange = handleJsonToText; // We will write this function next
+        document.body.appendChild(extractInput);
+        // --------------------------
     }
 
     function getRiskKey(label) {
@@ -1384,6 +1621,11 @@
                     <div class="xf-tool-icon">📥</div>
                     <div class="xf-tool-title">${TEXT.data.restore_json}</div>
                 </div>
+                <div class="xf-tool-card" id="xf-data-convert">
+                    <div class="xf-tool-icon">📝</div>
+                    <div class="xf-tool-title">JSON ➔ TXT</div>
+                    <div class="xf-tool-desc" style="font-size:10px; color:var(--xf-dim)">Extract Usernames</div>
+                </div>
                 <div class="xf-tool-card" id="xf-data-clear" style="border-color:var(--xf-red)">
                     <div class="xf-tool-icon">🗑️</div>
                     <div class="xf-tool-title" style="color:var(--xf-red)">${TEXT.data.clear_cache}</div>
@@ -1404,6 +1646,7 @@
         document.getElementById("xf-data-contrib").onclick = contributeData;
         document.getElementById("xf-data-backup").onclick = backupJSON;
         document.getElementById("xf-data-restore").onclick = () => document.getElementById("xf-restore-input").click();
+        document.getElementById("xf-data-convert").onclick = () => document.getElementById("xf-extract-input").click();
         document.getElementById("xf-data-clear").onclick = clearCache;
 
         document.getElementById('xf-l-auto').onclick = () => setLang('auto');
@@ -1593,21 +1836,121 @@
         });
     }
 
+    function showLoading(text) {
+        let loader = document.getElementById('xf-loader');
+        if (!loader) {
+            loader = document.createElement("div");
+            loader.id = "xf-loader";
+            // FIX: Use FONT_STACK here too
+            loader.style.cssText = `position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:20005; display:none; align-items:center; justify-content:center; backdrop-filter:blur(3px); font-family:${FONT_STACK};`;
+            
+            loader.innerHTML = `
+                <div style="background:#000; border:1px solid var(--xf-blue); padding:20px 40px; border-radius:12px; display:flex; flex-direction:column; align-items:center; color:#fff; box-shadow:0 0 20px rgba(29,155,240,0.3);">
+                    <div style="width:24px; height:24px; border:3px solid rgba(255,255,255,0.3); border-top-color:var(--xf-blue); border-radius:50%; animation:xf-spin 1s infinite linear; margin-bottom:15px;"></div>
+                    <div id="xf-loader-text" style="font-weight:bold; font-size:14px;">Please wait...</div>
+                </div>
+                <style>@keyframes xf-spin { to { transform: rotate(360deg); } }</style>
+            `;
+            document.body.appendChild(loader);
+        }
+        document.getElementById('xf-loader-text').innerText = text;
+        loader.style.display = "flex";
+    }
+
+    function hideLoading() {
+        const loader = document.getElementById('xf-loader');
+        if (loader) loader.style.display = "none";
+    }
+
+    function showMergeOptions(newData, sourceName) {
+        const modal = document.createElement("div");
+        // FIX: Use FONT_STACK here
+        modal.style.cssText = `position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:20000; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(5px); font-family:${FONT_STACK};`;
+        
+        const box = document.createElement("div");
+        box.style.cssText = "background:#000; border:1px solid var(--xf-border); width:90%; max-width:400px; padding:20px; border-radius:16px; color:#fff; text-align:center;";
+        
+        const t = TEXT.import_opt;
+
+        box.innerHTML = `
+            <div style="font-size:16px; font-weight:bold; margin-bottom:10px;">${t.title}</div>
+            <div style="font-size:12px; color:var(--xf-dim); margin-bottom:20px;">${t.desc}</div>
+            <div style="font-size:11px; color:var(--xf-blue); margin-bottom:15px;">Source: ${sourceName} (${Object.keys(newData).length} users)</div>
+
+            <button id="xf-opt-local" class="xf-menu-item" style="width:100%; border:1px solid var(--xf-border); background:rgba(255,255,255,0.05); text-align:left; border-radius:8px;">
+                <div style="display:flex; flex-direction:column;">
+                    <span style="font-weight:bold; font-size:13px;">🛡️ ${t.keep_local}</span>
+                    <span style="font-size:10px; color:var(--xf-dim);">${t.keep_local_desc}</span>
+                </div>
+            </button>
+
+            <button id="xf-opt-new" class="xf-menu-item" style="width:100%; border:1px solid var(--xf-border); background:rgba(29,155,240,0.1); text-align:left; border-radius:8px;">
+                 <div style="display:flex; flex-direction:column;">
+                    <span style="font-weight:bold; font-size:13px; color:var(--xf-blue);">🔄 ${t.prefer_new}</span>
+                    <span style="font-size:10px; color:var(--xf-dim);">${t.prefer_new_desc}</span>
+                </div>
+            </button>
+
+            <button id="xf-opt-over" class="xf-menu-item" style="width:100%; border:1px solid var(--xf-red); background:rgba(249,24,128,0.1); text-align:left; border-radius:8px;">
+                 <div style="display:flex; flex-direction:column;">
+                    <span style="font-weight:bold; font-size:13px; color:var(--xf-red);">⚠️ ${t.overwrite}</span>
+                    <span style="font-size:10px; color:var(--xf-dim);">${t.overwrite_desc}</span>
+                </div>
+            </button>
+
+            <button id="xf-opt-cancel" style="margin-top:10px; background:transparent; border:none; color:var(--xf-dim); cursor:pointer;">${t.cancel}</button>
+        `;
+
+        modal.appendChild(box);
+        document.body.appendChild(modal);
+
+        const close = () => modal.remove();
+
+        document.getElementById('xf-opt-local').onclick = () => {
+            db = { ...newData, ...db };
+            finishImport(Object.keys(db).length);
+        };
+
+        document.getElementById('xf-opt-new').onclick = () => {
+            db = { ...db, ...newData };
+            finishImport(Object.keys(db).length);
+        };
+
+        document.getElementById('xf-opt-over').onclick = () => {
+            if(confirm("Are you sure? This will delete all your current data.")) {
+                db = newData;
+                finishImport(Object.keys(db).length);
+            }
+        };
+
+        document.getElementById('xf-opt-cancel').onclick = close;
+
+        function finishImport(count) {
+            saveDB();
+            close();
+            alert(`Success! Database now has ${count} users.`);
+            showDashboard();
+        }
+    }
+
     function loadFromCloud() {
+        showLoading("Fetching from GitHub...");
+        
         GM_xmlhttpRequest({
             method: "GET", url: CLOUD_DB_URL,
             onload: function(response) {
+                hideLoading();
                 try {
                     const cloudData = JSON.parse(response.responseText);
-                    const beforeCount = Object.keys(db).length;
-                    db = { ...cloudData, ...db }; saveDB();
-                    const afterCount = Object.keys(db).length;
-                    const added = afterCount - beforeCount;
-                    alert(TEXT.dashboard.msg_cloud_ok.replace("{n}", added));
-                    showDashboard();
-                } catch (e) { alert(TEXT.dashboard.msg_cloud_fail); }
+                    showMergeOptions(cloudData, "GitHub Cloud");
+                } catch (e) { 
+                    alert(TEXT.dashboard.msg_cloud_fail); 
+                }
             },
-            onerror: function() { alert(TEXT.dashboard.msg_cloud_fail); }
+            onerror: function() { 
+                hideLoading();
+                alert(TEXT.dashboard.msg_cloud_fail); 
+            }
         });
     }
 
@@ -1633,107 +1976,125 @@
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
     }
 
-    function handleRestore(e) {
+    function handleJsonToText(e) {
         const file = e.target.files[0];
         if (!file) return;
+
         const reader = new FileReader();
         reader.onload = (event) => {
             try {
-                const imported = JSON.parse(event.target.result);
-                let addedCount = 0;
+                const json = JSON.parse(event.target.result);
+                let usernames = [];
 
-                if (Array.isArray(imported)) {
-                    imported.forEach(item => {
-                        const uKey = Object.keys(item).find(k => k === "Username" || k === "نام کاربری");
-                        if (!uKey) return;
-                        const username = item[uKey];
-                        if (!username) return;
-
-                        const idKey = Object.keys(item).find(k => k === "Numeric ID" || k === "آی‌دی عددی");
-                        const locKey = Object.keys(item).find(k => k === "Location" || k === "موقعیت");
-                        const devKey = Object.keys(item).find(k => k.includes("Device") || k.includes("دستگاه"));
-                        const createdKey = Object.keys(item).find(k => k.includes("Created") || k.includes("ساخت"));
-                        const renamedKey = Object.keys(item).find(k => k.includes("Change Count") || k.includes("تعداد تغییر"));
-                        const avatarKey = Object.keys(item).find(k => k.includes("Avatar") || k.includes("آواتار"));
-                        const accStatusKey = Object.keys(item).find(k => k.includes("Account Status") || k.includes("وضعیت اکانت"));
-                        const locStatusKey = Object.keys(item).find(k => k.includes("Location Status") || k.includes("وضعیت مکان"));
-                        const langKey = Object.keys(item).find(k => k.includes("Language") || k.includes("زبان"));
-                        const verKey = Object.keys(item).find(k => k.includes("Verified") || k.includes("تیک"));
-
-                        if (item[accStatusKey] === 0) return;
-
-                        let devStr = "Unknown";
-                        if (item[devKey] === 0) devStr = "Android";
-                        else if (item[devKey] === 1) devStr = "iPhone";
-                        else devStr = "Web/Other";
-
-                        const rawUtc = item[createdKey] || "";
-                        let formattedCreated = "N/A";
-                        if (rawUtc && rawUtc !== "N/A") {
-                             const dateObj = new Date(rawUtc);
-                             if (!isNaN(dateObj.getTime())) {
-                                 formattedCreated = formatTime(dateObj);
-                             } else {
-                                 formattedCreated = rawUtc;
-                             }
-                        }
-                        const isVerified = item[verKey] === 1;
-                        const langCode = (item[langKey] === 'fa') ? 'fa' : null;
-
-                        const data = {
-                            country: item[locKey] || "Unknown",
-                            countryCode: item[locKey],
-                            device: devStr,
-                            deviceFull: devStr,
-                            id: item[idKey] || "",
-                            created: formattedCreated,
-                            renamed: parseInt(item[renamedKey] || 0),
-                            isAccurate: item[locStatusKey] === 1,
-                            isIdVerified: isVerified,
-                            langCode: langCode,
-                            avatar: item[avatarKey] || "",
-                            isBlocked: false
-                        };
-
-                        let pillText = `📍 ${data.country}`;
-                        if (data.country === "Unknown" || data.country === "نامشخص") {
-                             pillText = `📱 ${data.device}`;
-                        }
-
-                        let color = "var(--xf-green)";
-                        const isTargetLoc = (data.countryCode === "Iran" || data.countryCode === "West Asia" || data.countryCode === "غرب آسیا");
-                        const isTargetDev = (data.deviceFull.includes("Android") || data.deviceFull.includes("iPhone"));
-
-                        if (!data.isAccurate) {
-                            color = "var(--xf-red)";
-                        } else if (isTargetLoc && data.isAccurate) {
-                            color = "var(--xf-orange)";
-                        }
-
-                        db[username] = {
-                            data: data,
-                            pillText: pillText,
-                            color: color,
-                            html: renderCardHTML(data, username)
-                        };
-                        addedCount++;
-                    });
-
-                    saveDB();
-                    alert(TEXT.dashboard.msg_imported_batch.replace("{n}", addedCount));
-
+                if (Array.isArray(json)) {
+                    // Case A: It's a Batch Export (Array of objects)
+                    // We look for common keys used in exports
+                    usernames = json.map(item => {
+                        return item.username || item.Username || item['User Name'] || item['نام کاربری'] || null;
+                    }).filter(u => u); // Remove nulls
                 } else {
-                    db = { ...db, ...imported };
-                    saveDB();
-                    alert(TEXT.dashboard.msg_restored.replace("{n}", Object.keys(imported).length));
+                    // Case B: It's a Database Backup (Object with keys)
+                    usernames = Object.keys(json);
                 }
-                showDashboard();
+
+                if (usernames.length === 0) {
+                    alert("No usernames found in this file.");
+                    return;
+                }
+
+                // Create the text file
+                const textContent = usernames.join('\n');
+                const blob = new Blob([textContent], { type: "text/plain" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `user_list_${Date.now()}.txt`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                alert(`Success! Extracted ${usernames.length} usernames.`);
+
             } catch (err) {
                 console.error(err);
-                alert(TEXT.dashboard.msg_err);
+                alert("Invalid JSON file.");
             }
         };
-        reader.readAsText(file); e.target.value = "";
+        reader.readAsText(file);
+        e.target.value = ""; // Reset input so we can select the same file again if needed
+    }
+
+    function handleRestore(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        showLoading("Reading File..."); // 1. Show Loading immediately
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            // 2. Use setTimeout to let the UI update before the heavy JSON.parse freezes it
+            setTimeout(() => {
+                try {
+                    // Update text to show next stage
+                    document.getElementById('xf-loader-text').innerText = "Parsing Data...";
+                    
+                    let imported = JSON.parse(event.target.result);
+                    let formattedData = {};
+
+                    // Handle Batch Array vs DB Object
+                    if (Array.isArray(imported)) {
+                        imported.forEach(item => {
+                            const uKey = Object.keys(item).find(k => k === "Username" || k === "نام کاربری");
+                            if (!uKey || !item[uKey]) return;
+                            const username = item[uKey];
+                            
+                            const idKey = Object.keys(item).find(k => k === "Numeric ID" || k === "آی‌دی عددی");
+                            const locKey = Object.keys(item).find(k => k === "Location" || k === "موقعیت");
+                            const devKey = Object.keys(item).find(k => k.includes("Device") || k.includes("دستگاه"));
+                            
+                            const data = {
+                                country: item[locKey] || "Unknown",
+                                countryCode: item[locKey],
+                                device: "Imported",
+                                deviceFull: item[devKey] || "Imported",
+                                id: item[idKey] || "",
+                                created: "N/A",
+                                renamed: 0,
+                                isAccurate: false,
+                                isIdVerified: false,
+                                avatar: "",
+                                isBlocked: false
+                            };
+                            
+                            formattedData[username] = {
+                                data: data,
+                                pillText: `📍 ${data.country}`,
+                                color: "var(--xf-dim)", 
+                                html: renderCardHTML(data, username)
+                            };
+                        });
+                    } else {
+                        formattedData = imported;
+                    }
+
+                    hideLoading(); // 3. Hide Loading
+                    
+                    if (Object.keys(formattedData).length === 0) {
+                        alert("No valid data found.");
+                        return;
+                    }
+
+                    showMergeOptions(formattedData, file.name);
+
+                } catch (err) {
+                    hideLoading();
+                    console.error(err);
+                    alert(TEXT.dashboard.msg_err);
+                }
+            }, 50); // Small delay to allow UI to paint
+        };
+        
+        reader.readAsText(file); 
+        e.target.value = "";
     }
 
     function exportCSV() {
@@ -1995,10 +2356,20 @@
         `;
 
         return `
+                
             <div class="xf-header">
-                <div style="display:flex;align-items:center;"><span class="xf-title">${TEXT.title}</span><span class="xf-badge" style="background:${color};margin-left:5px;">${label}</span>${blockedBadge}</div>
-                <div class="xf-retry" id="xf-retry-btn" title="${TEXT.btn.retry}" data-user="${username}">↻</div>
+                <div style="display:flex;align-items:center;">
+                    <span class="xf-title">${TEXT.title}</span>
+                    <span class="xf-badge" style="background:${color};margin-left:5px;">${label}</span>
+                    ${blockedBadge}
+                </div>
+                <div style="display:flex; align-items:center;">
+                    <div class="xf-retry" id="xf-retry-btn" title="${TEXT.btn.retry}" data-user="${username}">↻</div>
+                    <div class="xf-retry" id="xf-close-card" title="${TEXT.btn.close}" style="color:var(--xf-dim); font-size:18px; margin-left:8px;">✕</div>
+                </div>
             </div>
+
+  
 
             <div class="xf-tabs-nav">
                 <div class="xf-tab-btn active" data-tab="info">${TEXT.tabs.info}</div>
@@ -2014,15 +2385,72 @@
 
     // --- UI UTILS ---
     function bindEvents(container) {
-        // Tab switching logic
+        if (!container) return;
+
+        // --- 1. CLOSE BUTTON (Clean Logic) ---
+        const closeCardBtn = container.querySelector('#xf-close-card');
+        if (closeCardBtn) {
+            // Remove old listeners by cloning (Safe method)
+            const newBtn = closeCardBtn.cloneNode(true);
+            closeCardBtn.parentNode.replaceChild(newBtn, closeCardBtn);
+            
+            newBtn.onclick = (e) => {
+                e.stopPropagation();
+                // Desktop: Just remove the class. CSS handles the fading.
+                if (tooltipEl) {
+                    tooltipEl.classList.remove('visible');
+                    tooltipEl.style.opacity = ""; // RESET any stuck styles
+                }
+                // Mobile: Hide overlay
+                const mobOverlay = document.getElementById("xf-mob-overlay");
+                if (mobOverlay) mobOverlay.style.display = "none";
+            };
+        }
+
+        // --- 2. REFRESH BUTTON ---
+        const retryBtn = container.querySelector('#xf-retry-btn');
+        if(retryBtn) {
+            retryBtn.onclick = async (e) => {
+                e.stopPropagation();
+                
+                // Visual Loading
+                retryBtn.style.transition = "transform 0.5s";
+                retryBtn.style.transform = "rotate(360deg)";
+                container.style.opacity = "0.6";
+
+                const user = retryBtn.dataset.user;
+                const newData = await fetchData(user, true);
+
+                if (newData) {
+                    // Update content
+                    container.innerHTML = newData.html;
+                    container.style.opacity = "1";
+
+                    // Re-bind events
+                    bindEvents(container);
+
+                    // Re-attach Mouse Leave logic (Desktop Only)
+                    if (!IS_MOBILE && container.id === 'xf-card') {
+                        container.onmouseleave = hideDesktop;
+                        container.onmouseenter = () => clearTimeout(hideTimeout);
+                    }
+                    
+                    // Update Header Pill
+                    const pill = document.getElementById("xf-pill");
+                    if(pill && pill.dataset.user === user) { 
+                        pill.innerHTML = `<div class="xf-dot" style="color:${newData.color}"></div><span>${newData.pillText}</span>`; 
+                    }
+                }
+            };
+        }
+
+        // --- 3. TABS ---
         const tabs = container.querySelectorAll('.xf-tab-btn');
         tabs.forEach(tab => {
             tab.onclick = (e) => {
                 e.stopPropagation();
-                // Deactivate all
                 container.querySelectorAll('.xf-tab-btn').forEach(t => t.classList.remove('active'));
                 container.querySelectorAll('.xf-tab-content').forEach(c => c.classList.remove('active'));
-                // Activate clicked
                 tab.classList.add('active');
                 const targetId = `xf-tab-${tab.dataset.tab}`;
                 const targetContent = container.querySelector(`#${targetId}`);
@@ -2030,24 +2458,40 @@
             };
         });
 
-        const retryBtn = container.querySelector('#xf-retry-btn');
-        if(retryBtn) {
-            retryBtn.onclick = async (e) => {
-                e.stopPropagation(); retryBtn.style.transform = "rotate(360deg)"; container.style.opacity = "0.6";
-                const user = retryBtn.dataset.user;
-                const newData = await fetchData(user, true);
-                if (newData) {
-                    container.innerHTML = newData.html; bindEvents(container); container.style.opacity = "1";
-                    const pill = document.getElementById("xf-pill");
-                    if(pill && pill.dataset.user === user) { pill.innerHTML = `<div class="xf-dot" style="color:${newData.color}"></div><span>${newData.pillText}</span>`; }
-                }
+        // --- 4. COPY REPORT ---
+        const copyBtn = container.querySelector('#xf-copy-report');
+        if(copyBtn) {
+            copyBtn.onclick = (e) => {
+                e.stopPropagation();
+                const u = copyBtn.dataset.user;
+                if(!db[u]) return;
+                const d = db[u].data;
+                const tags = db[u].tags || [];
+                const note = db[u].note || "N/A";
+                const report = `
+📂 **FORENSIC CASE FILE: @${u}**
+--------------------------------
+🆔 ID: ${d.id}
+👤 Name: ${d.name || u}
+📅 Created: ${d.created}
+📍 Location: ${d.country}
+--------------------------------
+🔗 Link: https://x.com/${u}
+Generated by X Forensics`.trim();
+                navigator.clipboard.writeText(report);
+                const originalText = copyBtn.innerText;
+                copyBtn.innerText = "✅ Copied!";
+                setTimeout(() => copyBtn.innerText = originalText, 2000);
             };
         }
+
+        // --- 5. INPUTS & TAGS ---
         const noteInput = container.querySelector('#xf-note-input');
         if(noteInput) {
             noteInput.addEventListener('input', (e) => {
                 saveNote(e.target.dataset.user, e.target.value);
             });
+            noteInput.onclick = (e) => e.stopPropagation();
         }
 
         const tagChecks = container.querySelectorAll('.xf-tag-check');
@@ -2055,12 +2499,16 @@
             chk.onchange = (e) => {
                 toggleTag(e.target.dataset.user, e.target.dataset.tag);
             };
+            chk.onclick = (e) => e.stopPropagation();
         });
     }
 
     function showDesktop(e, html, username) {
         if (hideTimeout) clearTimeout(hideTimeout);
         if (!tooltipEl) { tooltipEl = document.createElement("div"); tooltipEl.id = "xf-card"; tooltipEl.onmouseenter = () => clearTimeout(hideTimeout); tooltipEl.onmouseleave = hideDesktop; document.body.appendChild(tooltipEl); }
+        
+        tooltipEl.style.opacity = ""; 
+        tooltipEl.style.display = ""; 
         tooltipEl.innerHTML = html; bindEvents(tooltipEl); tooltipEl.className = "visible";
         let top = e.clientY + 20, left = e.clientX;
         if (IS_RTL) left -= 320; if (left + 340 > window.innerWidth) left = window.innerWidth - 360; if (top + 400 > window.innerHeight) top = e.clientY - 450;
@@ -2255,19 +2703,36 @@
 
     let observerTimeout;
     const observer = new MutationObserver((mutations) => {
+        // URL Change Detection
         if (location.href !== lastUrl) {
             lastUrl = location.href;
             document.getElementById("xf-pill")?.remove();
+            
+            // If we left the search page while recording, stop it
+            if (isRecordingSearch) {
+                clearInterval(searchScrapeInterval);
+                isRecordingSearch = false;
+                // We don't save automatically here to prevent annoyance, 
+                // but the button is removed anyway.
+            }
+            
             if(tooltipEl) tooltipEl.className="";
             const user = getUser();
             if (user) inject(user);
         }
+
         if (observerTimeout) return;
         observerTimeout = setTimeout(() => {
             const user = getUser();
             if (user && document.querySelector('[data-testid="UserProfileHeader_Items"]') && !document.getElementById("xf-pill")) { inject(user); }
+            
             injectLists();
             injectNativeMenu();
+            
+            // --- NEW: Run the Search Dumper Injector ---
+            injectSearchDumper(); 
+            // -------------------------------------------
+            
             observerTimeout = null;
         }, 500);
     });
