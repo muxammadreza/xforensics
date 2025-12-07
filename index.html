@@ -330,33 +330,51 @@
         }
 
         async function searchDatabase({ nationalCode, fullName, mobile }) {
+            const BASE_URL = "https://datasets-server.huggingface.co/search";
             const DATASET = "yebekhe/bdata";
             const CONFIG = "default";
             const SPLIT = "train";
-            let conditions = [];
+
+            // The /search endpoint accepts a SINGLE 'query' string.
+            // We prioritize: National Code > Mobile > Name
+            let queryTerm = "";
 
             if (nationalCode) {
-                const cleanCode = nationalCode.trim();
-                conditions.push(`(NATIONAL_CODE = '${cleanCode.startsWith('0') ? cleanCode : '0'+cleanCode}' OR NATIONAL_CODE = '${cleanCode.startsWith('0') ? cleanCode.substring(1) : cleanCode}')`);
-            }
-            if (mobile) {
-                conditions.push(`MOBILE = '${mobile.trim()}'`);
-            }
-            if (fullName) {
-                conditions.push(`FULL_NAME LIKE '%${normalizePersian(fullName)}%'`);
+                // Search exact code. Search engine usually finds it even without leading zero.
+                queryTerm = nationalCode.trim();
+            } else if (mobile) {
+                queryTerm = mobile.trim();
+            } else if (fullName) {
+                queryTerm = normalizePersian(fullName);
             }
 
-            if (conditions.length === 0) return [];
-            
-            const url = `https://datasets-server.huggingface.co/filter?dataset=${DATASET}&config=${CONFIG}&split=${SPLIT}&where=${encodeURIComponent(conditions.join(" AND "))}`;
-            
+            if (!queryTerm) return [];
+
+            // Construct URL
+            const url = `${BASE_URL}?dataset=${DATASET}&config=${CONFIG}&split=${SPLIT}&query=${encodeURIComponent(queryTerm)}&length=20`;
+
+            console.log("Searching:", url);
+
             try {
                 const response = await fetch(url);
-                if (!response.ok) throw new Error("API Error");
+                
+                // Handle API Errors (e.g., Search not ready, 500 error)
+                if (!response.ok) {
+                    const errText = await response.text();
+                    console.error("HF API Error:", errText);
+                    throw new Error("Search API Error");
+                }
+                
                 const data = await response.json();
-                return data.rows.map(item => item.row);
+                
+                // The /search endpoint returns: { rows: [ { row: { ...data... } } ] }
+                if (data.rows && Array.isArray(data.rows)) {
+                    return data.rows.map(item => item.row);
+                }
+                return [];
+
             } catch (error) {
-                console.error("Search failed:", error);
+                console.error("Search Request Failed:", error);
                 return [];
             }
         }
