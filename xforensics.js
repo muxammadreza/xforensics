@@ -28,7 +28,10 @@
             risk: { safe: "SAFE", detected: "DETECTED", anomaly: "ANOMALY", caution: "CAUTION", normal: "NORMAL", verified: "VERIFIED ID" },
             tags: { title: "Manual Tags", loc_change: "Location Changed", base_iran: "Suspect Base Iran", cyber: "Cyber/Organized", fake: "Fake/Bot", flag_ir: "🇮🇷 Iran Flag",
                 suspicious: "Suspicious Behavior",
-                foreigner: "Foreigner (Non-IR)" },
+                foreigner: "Foreigner (Non-IR)",
+                white_internet: "⚪ White Internet",
+                ir_network: "🔴 IR Network",
+                mek_network: "🟠 MEK Network" },
             status: {
                 high_conf: "High Confidence", high_desc: "Connection matches organic traffic patterns.",
                 shield: "Shield Active", shield_desc: "Traffic obfuscated via Proxy/VPN or flagged for relocation.",
@@ -88,9 +91,10 @@
                 status_idle: "Idle", status_running: "Running...", status_paused: "Paused (Rate Limit)", status_stopped: "Stopped", status_done: "Finished",
                 progress: "Progress: {c} of {t} | OK: {ok} | Error: {err}", rate_limit_msg: "Rate Limit. Pausing 1 min...", rate_limit_wait: "Pausing: {s}s...",
                 export_filename: "batch_export", fields_label: "Select Fields:",
-                col_username: "Username", col_name: "Name", col_id_changes: "Renamed Count", col_last_change: "Last Renamed",
+                col_username: "Username", col_name: "Name", col_display_name: "Display Name", col_id_changes: "Renamed Count", col_last_change: "Last Renamed",
                 col_created: "Created", col_deleted: "Status", col_device: "Device", col_location_status: "Loc Status",
                 col_gender: "Gender", col_numeric_id: "ID", col_location: "Location", col_avatar: "Avatar", col_lang: "Lang", col_verified: "Verified",
+                col_followers: "Followers", col_tweet_count: "Tweets", col_bio_location: "Bio Location", col_blue_verified: "Blue ✓", col_is_bot: "Bot", col_sources: "Sources",
                 merge_label: "Merge valid results into Database automatically",
                 skip_label: "Skip users already in Database"
             },
@@ -142,7 +146,10 @@
             risk: { safe: "امن", detected: "هشدار", anomaly: "ناهنجاری", caution: "احتیاط", normal: "طبیعی", verified: "تایید شده" },
             tags: { title: "دسته‌بندی / تگ‌ها", loc_change: "تغییر لوکیشن", base_iran: "مشکوک به Base Iran", cyber: "سایبری/سازمانی", fake: "فیک/جعلی", flag_ir: "🇮🇷 پرچم ایران",
                 suspicious: "رفتار مشکوک",
-                foreigner: "خارجی (غیر ایرانی)" },
+                foreigner: "خارجی (غیر ایرانی)",
+                white_internet: "⚪ اینترنت سفید",
+                ir_network: "🔴 شبکه جمهوری اسلامی",
+                mek_network: "🟠 شبکه مجاهدین" },
             status: {
                 high_conf: "اطمینان بالا", high_desc: "اتصال طبیعی و ارگانیک است.",
                 shield: "سپر فعال", shield_desc: "استفاده از VPN/پروکسی تشخیص داده شد.",
@@ -202,9 +209,10 @@
                 status_idle: "آماده", status_running: "در حال اجرا...", status_paused: "متوقف شده (Rate Limit)", status_stopped: "متوقف شد", status_done: "پایان یافت",
                 progress: "پیشرفت: {c} از {t} | موفق: {ok} | خطا: {err}", rate_limit_msg: "محدودیت API. ۱ دقیقه صبر...", rate_limit_wait: "توقف: {s} ثانیه...",
                 export_filename: "خروجی-دسته-ای", fields_label: "انتخاب فیلدها:",
-                col_username: "نام کاربری", col_name: "نام نمایشی", col_id_changes: "تغییر نام", col_last_change: "آخرین تغییر",
+                col_username: "نام کاربری", col_name: "نام نمایشی", col_display_name: "نام نمایشی", col_id_changes: "تغییر نام", col_last_change: "آخرین تغییر",
                 col_created: "تاریخ ساخت", col_deleted: "وضعیت", col_device: "دستگاه", col_location_status: "وضعیت مکان",
                 col_gender: "جنسیت", col_numeric_id: "ID", col_location: "موقعیت", col_avatar: "آواتار", col_lang: "زبان", col_verified: "تیک",
+                col_followers: "فالوور", col_tweet_count: "توییت‌ها", col_bio_location: "موقعیت بیو", col_blue_verified: "تیک آبی", col_is_bot: "ربات", col_sources: "منابع",
                 merge_label: "ذخیره خودکار نتایج سالم در دیتابیس",
                 skip_label: "رد کردن کاربران موجود در دیتابیس"
             },
@@ -255,8 +263,8 @@
 
     // --- 2. STORAGE & GLOBALS ---
     const STORAGE_KEY = "xf_db_v1";
-    const GITHUB_REPO_ISSUES = "https://github.com/itsyebekhe/xforensics/issues/new";
-    const CLOUD_DB_URL = "https://raw.githubusercontent.com/itsyebekhe/xforensics/main/database.json";
+    const GITHUB_REPO_ISSUES = "https://github.com/muxammadreza/xforensics/issues/new";
+    const CLOUD_DB_URL = "https://raw.githubusercontent.com/muxammadreza/xforensics/main/database.json";
 
     let saveTimeout;
     let db = {};
@@ -278,6 +286,7 @@
     const BATCH_FIELDS = [
         { id: 'username', labelKey: 'col_username' },
         { id: 'name', labelKey: 'col_name' },
+        { id: 'display_name', labelKey: 'col_display_name' },
         { id: 'numeric_id', labelKey: 'col_numeric_id' },
         { id: 'location', labelKey: 'col_location' },
         { id: 'device', labelKey: 'col_device' },
@@ -289,7 +298,13 @@
         { id: 'gender', labelKey: 'col_gender' },
         { id: 'avatar', labelKey: 'col_avatar' },
         { id: 'lang', labelKey: 'col_lang' },
-        { id: 'verified', labelKey: 'col_verified' }
+        { id: 'verified', labelKey: 'col_verified' },
+        { id: 'followers', labelKey: 'col_followers' },
+        { id: 'tweet_count', labelKey: 'col_tweet_count' },
+        { id: 'bio_location', labelKey: 'col_bio_location' },
+        { id: 'is_blue_verified', labelKey: 'col_blue_verified' },
+        { id: 'is_bot', labelKey: 'col_is_bot' },
+        { id: 'sources', labelKey: 'col_sources' }
     ];
 
     let batchOverlayEl = null;
@@ -1449,8 +1464,15 @@
             const row = document.createElement("div");
             row.className = `xf-user-row ${isBlocked ? 'xf-blocked' : ''}`;
             const displayRiskLabel = isBlocked ? `🚫 ${displayRisk}` : displayRisk;
+            // Build enhanced meta string with optional follower count and sources
+            let metaParts = [`📍 ${entry.country || 'Unknown'}`, `📱 ${(entry.device || 'Web').split(' ')[0]}`];
+            if (entry.followers) metaParts.push(`👥 ${entry.followers.toLocaleString()}`);
+            if (entry.sources && entry.sources.length > 1) {
+                const srcIcons = entry.sources.map(s => s === 'white_internet' ? '⚪' : s === 'ir_network' ? '🔴' : s === 'mek_network' ? '🟠' : '').filter(Boolean).join('');
+                if (srcIcons) metaParts.push(srcIcons);
+            }
 
-            row.innerHTML = `<div><div class="xf-u-name">@${user}</div><span class="xf-u-meta">📍 ${entry.country} | 📱 ${entry.device.split(' ')[0]}</span></div><div class="xf-u-risk" style="background:${badgeColor}">${displayRiskLabel}</div>`;
+            row.innerHTML = `<div><div class="xf-u-name">@${user}</div><span class="xf-u-meta">${metaParts.join(' | ')}</span></div><div class="xf-u-risk" style="background:${badgeColor}">${displayRiskLabel}</div>`;
             row.onclick = () => window.open(`https://x.com/${user}`, '_blank');
             listContainer.appendChild(row);
         }
@@ -1658,7 +1680,7 @@
     function renderTagCloudView(container) {
         const tagCounts = {};
         const tagLabels = {};
-        const allTagKeys = ['loc_change', 'base_iran', 'cyber', 'fake', 'flag_ir', 'suspicious', 'foreigner'];
+        const allTagKeys = ['loc_change', 'base_iran', 'cyber', 'fake', 'flag_ir', 'suspicious', 'foreigner', 'white_internet', 'ir_network', 'mek_network'];
 
         allTagKeys.forEach(k => { tagCounts[k] = 0; tagLabels[k] = TEXT.tags[k] || k; });
         Object.values(db).forEach(user => { (user.tags || []).forEach(tag => { tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
@@ -2099,14 +2121,21 @@
 
     function exportCSV() {
         const keys = getFilteredUsers();
-        let csv = "\uFEFFUsername,ID,Location,Device,Risk,Created,Link,Blocked,Tags\n";
+        let csv = "\uFEFFUsername,ID,DisplayName,Location,Device,Risk,Created,Followers,Following,Tweets,BlueVerified,Bot,Sources,Link,Blocked,Tags\n";
         keys.forEach(user => {
             const entry = db[user].data;
-            const riskTag = entry.riskLabel;
-            const safeDev = `"${entry.deviceFull.replace(/"/g, '""')}"`;
+            const riskTag = entry.riskLabel || '';
+            const safeDev = `"${(entry.deviceFull || entry.device || 'Web').replace(/"/g, '""')}"`;
             const blockedStatus = entry.isBlocked ? "Yes" : "No";
             const tags = (db[user].tags || []).join(' | ');
-            csv += `${user},${entry.id},${entry.country},${safeDev},${riskTag},${entry.created},https://x.com/${user},${blockedStatus},"${tags}"\n`;
+            const displayName = `"${(entry.displayName || '').replace(/"/g, '""')}"`;
+            const followers = entry.followers || '';
+            const following = entry.following || '';
+            const tweets = entry.tweetCount || '';
+            const blueVer = entry.isBlueVerified ? 'Yes' : 'No';
+            const isBot = entry.isBot ? 'Yes' : 'No';
+            const sources = (entry.sources || []).join(', ');
+            csv += `${user},${entry.id || ''},${displayName},${entry.country || ''},${safeDev},${riskTag},${entry.created || ''},${followers},${following},${tweets},${blueVer},${isBot},"${sources}",https://x.com/${user},${blockedStatus},"${tags}"\n`;
         });
         const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
         const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `xf_report_${Date.now()}.csv`;
